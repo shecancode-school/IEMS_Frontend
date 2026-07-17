@@ -10,6 +10,8 @@ import { ok, fail } from "@/lib/http";
 const Body = z.object({ token: z.string().min(10) });
 
 /// POST /api/auth/verify
+
+
 export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("Token is required");
