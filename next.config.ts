@@ -31,8 +31,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  /* pdfkit reads its font files from disk — keep it out of the bundle */
-  serverExternalPackages: ["pdfkit"],
+  /* pdfkit reads its font files from disk — keep it out of the bundle.
+     sharp ships a native binary; Vercel's file tracing misses it under pnpm's
+     node_modules/.pnpm layout, which crashed every sharp-importing API route
+     at module load in production, so it's externalized and force-included. */
+  serverExternalPackages: ["pdfkit", "sharp"],
+  outputFileTracingIncludes: {
+    "/api/**/*": ["node_modules/.pnpm/@img*/**", "node_modules/.pnpm/sharp@*/**"],
+  },
   allowedDevOrigins: ["dorie-dimissory-rambunctiously.ngrok-free.dev"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
