@@ -244,10 +244,10 @@ function ParticipantsInner() {
                 value={event}
                 onValueChange={setEvent}
                 includeAll
-                className="h-9 w-[170px]"
+                className="h-9 w-42.5"
               />
               <Select value={registration} onValueChange={setRegistration}>
-                <SelectTrigger className="h-9 w-[150px]">
+                <SelectTrigger className="h-9 w-37.5">
                   <SelectValue placeholder="Registration" />
                 </SelectTrigger>
                 <SelectContent>
@@ -260,7 +260,7 @@ function ParticipantsInner() {
                 </SelectContent>
               </Select>
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-9 w-[140px]">
+                <SelectTrigger className="h-9 w-35">
                   <SelectValue placeholder="Verification" />
                 </SelectTrigger>
                 <SelectContent>
@@ -273,7 +273,7 @@ function ParticipantsInner() {
                 </SelectContent>
               </Select>
               <Select value={stack} onValueChange={setStack}>
-                <SelectTrigger className="h-9 w-[130px]">
+                <SelectTrigger className="h-9 w-32.5">
                   <SelectValue placeholder="Stack" />
                 </SelectTrigger>
                 <SelectContent>

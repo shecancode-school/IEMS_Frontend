@@ -18,7 +18,7 @@ function transport(): Transporter {
   return cached;
 }
 
-const FROM = () => `Igire Rwanda Events <${process.env.GMAIL_USER}>`;
+const FROM = () => `Igire Rwanda Organization Events <${process.env.GMAIL_USER}>`;
 
 /* liveness check for the health-check script — verifies the SMTP connection
    and credentials without sending a message. Throws on failure. */
@@ -88,7 +88,7 @@ export async function sendRegistrationConfirmation(to: string, name: string, eve
     subject: `You're registered for ${eventName}`,
     html: shell(`
       <p>Hi ${name.split(" ")[0]},</p>
-      <p>Your registration for <b>${eventName}</b> is confirmed. The next step is to complete your profile so we can issue your event pass — you'll get it by email the moment it's ready.</p>
+      <p>Your registration for <b>${eventName}</b> is confirmed. The next step is to complete your profile so we can issue your event pass you'll get it by email the moment it's ready.</p>
     `),
   });
 }
@@ -123,7 +123,7 @@ export async function sendEventReminderEmail(
     subject: `Reminder: ${eventName} is coming up`,
     html: shell(`
       <p>Hi ${name.split(" ")[0]},</p>
-      <p>Just a friendly reminder that <b>${eventName}</b> is happening ${whenLabel}. Bring your event pass — the QR code is scanned at the entrance.</p>
+      <p>Just a friendly reminder that <b>${eventName}</b> is happening ${whenLabel}. Bring your event pass the QR code is scanned at the entrance.</p>
     `),
   });
 }
@@ -165,10 +165,10 @@ export async function sendTicketEmail(opts: {
   await transport().sendMail({
     from: FROM(),
     to: opts.to,
-    subject: `Your event pass — ${opts.eventName}`,
+    subject: `Your event pass ${opts.eventName}`,
     html: shell(`
       <p>Hi ${opts.name.split(" ")[0]},</p>
-      <p>Great news — you're all set for <b>${opts.eventName}</b>! Your personal event pass is below; just show the QR code at the entrance and you're in.</p>
+      <p>Great news you're all set for <b>${opts.eventName}</b>! Your personal event pass is below; just show the QR code at the entrance and you're in.</p>
 
       <div style="margin:24px 0;border:1px solid #e8e8e6;border-radius:14px;overflow:hidden;background:#123522">
         ${

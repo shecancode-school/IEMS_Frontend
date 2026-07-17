@@ -34,7 +34,7 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
           </SidebarInset>
         </SidebarProvider>
       </TooltipProvider>
-      <Toaster position="top-right" richColors closeButton />
+      <Toaster position="top-center" richColors closeButton />
     </div>
   );
 }

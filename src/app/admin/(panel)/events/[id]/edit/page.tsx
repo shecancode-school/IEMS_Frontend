@@ -69,7 +69,7 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto">
       <PageHeader
         title="Edit event"
         crumbs={[

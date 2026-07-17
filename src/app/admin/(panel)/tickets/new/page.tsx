@@ -11,9 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
+  CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
@@ -38,40 +38,60 @@ function HolderCombobox({
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.id === value);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
-          {selected ? selected.label : <span className="text-muted-foreground">{placeholder}</span>}
-          <ChevronsUpDown className="size-4 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search…" />
-          <CommandList>
-            <CommandEmpty>No matches.</CommandEmpty>
+    <>
+      <Button
+        variant="outline"
+        role="combobox"
+        aria-expanded={open}
+        className="w-full justify-between font-normal"
+        onClick={() => setOpen(true)}
+      >
+        {selected ? (
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate">{selected.label}</span>
+            <span className="truncate text-xs text-muted-foreground">{selected.sub}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{placeholder}</span>
+        )}
+        <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
+      </Button>
+      <CommandDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={placeholder}
+        description="Search by name, email or event"
+        className="top-1/2 left-1/2 -translate-y-1/2 border border-white/10 bg-neutral-950 text-neutral-50 ring-0 shadow-2xl sm:max-w-2xl"
+      >
+        <Command className="bg-neutral-950 text-neutral-50">
+          <CommandInput placeholder="Search by name, email or event…" />
+          <CommandList className="max-h-80">
+            <CommandEmpty className="py-6 text-center text-sm text-neutral-400">
+              No matches.
+            </CommandEmpty>
             <CommandGroup>
               {options.map((o) => (
                 <CommandItem
                   key={o.id}
                   value={`${o.label} ${o.sub}`}
+                  className="data-selected:bg-white/10 data-selected:text-white"
                   onSelect={() => {
                     onChange(o.id);
                     setOpen(false);
                   }}
                 >
                   <Check className={cn("size-4", value === o.id ? "opacity-100" : "opacity-0")} />
-                  <span className="flex flex-col">
-                    <span>{o.label}</span>
-                    <span className="text-xs text-muted-foreground">{o.sub}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-neutral-50">{o.label}</span>
+                    <span className="truncate text-xs text-neutral-400">{o.sub}</span>
                   </span>
                 </CommandItem>
               ))}
             </CommandGroup>
           </CommandList>
         </Command>
-      </PopoverContent>
-    </Popover>
+      </CommandDialog>
+    </>
   );
 }
 
@@ -99,10 +119,10 @@ export default function GenerateTicketPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto w-full max-w-xl">
       <PageHeader
         title="Generate ticket"
-        description="Issue a pass for a participant or guest — the QR is emailed to them."
+        description="Issue a pass for a participant or guest the QR is emailed to them."
         crumbs={[{ label: "Tickets", href: "/admin/tickets" }, { label: "Generate" }]}
       />
       <Card className="shadow-none">
