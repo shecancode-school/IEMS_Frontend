@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   LogOut,
+  Mail,
   PlusCircle,
   ScanLine,
   ShieldCheck,
@@ -57,6 +58,7 @@ const MAIN = [
 
 const OPERATIONS = [
   { href: "/admin/scan", label: "Scan tickets", icon: ScanLine },
+  { href: "/admin/emails", label: "Emails", icon: Mail },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
   { href: "/admin/status", label: "API status", icon: Activity },
 ];

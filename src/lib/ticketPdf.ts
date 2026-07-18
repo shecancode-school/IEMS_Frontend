@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { formatEventDate, formatEventTime } from "./time";
 
 /* Brand palette, mirrored from globals.css */
 const BG = "#0b2818";
@@ -119,17 +120,14 @@ export function ticketPdfBuffer(t: TicketPdfInput): Promise<Buffer> {
     if (t.eventDate) {
       meta.push([
         "DATE",
-        t.eventDate.toLocaleDateString("en-US", {
+        formatEventDate(t.eventDate, {
           weekday: "short",
           month: "short",
           day: "numeric",
           year: "numeric",
         }),
       ]);
-      meta.push([
-        "TIME",
-        t.eventDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-      ]);
+      meta.push(["TIME", formatEventTime(t.eventDate)]);
     }
     if (t.venue) meta.push(["VENUE", t.venue]);
     let mx = bodyX;

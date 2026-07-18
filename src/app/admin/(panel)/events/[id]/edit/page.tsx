@@ -8,14 +8,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { TableSkeleton, EmptyState } from "@/components/admin/states";
 import { Card, CardContent } from "@/components/ui/card";
 import type { EventFormValues, EventUpdateBody, EventFormInput } from "@/schemas/admin";
-
-/* ISO → <input type="datetime-local"> value (local time, minutes precision) */
-function toLocalInput(iso?: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+import { isoToKigaliInput, kigaliInputToISO } from "@/lib/time";
 
 export default function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -34,8 +27,8 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     slug: event.slug,
     category: event.category,
     type: event.type,
-    startTime: toLocalInput(event.startTime),
-    endTime: toLocalInput(event.endTime),
+    startTime: isoToKigaliInput(event.startTime),
+    endTime: isoToKigaliInput(event.endTime),
     gallery: event.gallery,
     organiser: event.organiser,
     maxAttendees: event.maxAttendees,
@@ -52,8 +45,10 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
       name: v.name,
       category: v.category,
       type: v.type,
-      startTime: v.startTime,
-      endTime: v.endTime ? v.endTime : null,
+      /* the form's datetime-local values are Kigali wall clock; pin the
+         offset so the API stores the exact instant regardless of server TZ */
+      startTime: kigaliInputToISO(v.startTime),
+      endTime: v.endTime ? kigaliInputToISO(v.endTime) : null,
       gallery: v.gallery,
       organiser: v.organiser,
       maxAttendees: v.maxAttendees,

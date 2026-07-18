@@ -17,6 +17,7 @@ import {
 import IdCard from "@/components/portal/IdCard";
 import Confetti from "@/components/portal/Confetti";
 import { RichText } from "@/components/RichText";
+import { formatEventDate } from "@/lib/time";
 
 type Gender = "FEMALE" | "MALE" | "OTHER";
 type Relationship = "RELATIVE" | "FRIEND" | "COLLEAGUE" | "PARTNER" | "MENTOR" | "OTHER";
@@ -532,12 +533,7 @@ function EventCard({ event }: { event: NonNullable<Me["event"]> }) {
       <h2 className="label mb-4 text-sm font-bold text-orange">Event</h2>
       <p className="display text-2xl">{event.name}</p>
       <p className="mt-1 text-sm text-cream-dim">
-        {new Date(event.date).toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        })}
+        {formatEventDate(event.date)}
         {event.venue && ` · ${event.venue}`}
       </p>
       {event.about && (

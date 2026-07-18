@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import type { EventFormValues } from "@/schemas/admin";
 import type { EventCreateValues } from "@/schemas/admin";
+import { kigaliInputToISO } from "@/lib/time";
 
 export default function NewEventPage() {
   const router = useRouter();
@@ -19,8 +20,10 @@ export default function NewEventPage() {
       slug: v.slug,
       category: v.category,
       type: v.type,
-      startTime: v.startTime,
-      ...(v.endTime ? { endTime: v.endTime } : {}),
+      /* datetime-local values are Kigali wall clock; pin the offset so the
+         API stores the exact instant regardless of server TZ */
+      startTime: kigaliInputToISO(v.startTime),
+      ...(v.endTime ? { endTime: kigaliInputToISO(v.endTime) } : {}),
       gallery: v.gallery,
       organiser: v.organiser,
       maxAttendees: v.maxAttendees,

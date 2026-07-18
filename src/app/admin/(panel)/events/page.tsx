@@ -21,8 +21,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const dateFmt = (s: string) =>
-  new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+import { formatEventDate } from "@/lib/time";
+
+/* event dates always render in Kigali time, matching what the admin typed */
+const dateFmt = (s: string) => formatEventDate(s, { month: "short", day: "numeric", year: "numeric" });
 
 export default function EventsPage() {
   const router = useRouter();

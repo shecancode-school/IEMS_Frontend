@@ -2,6 +2,7 @@
 import Image from "next/image";
 import { StatusBadge } from "./ui";
 import AvatarStack, { type StackItem } from "./AvatarStack";
+import { formatEventDate, formatEventTime } from "@/lib/time";
 
 /* Event pass styled like a real ticket: main body + a perforated
    tear-off stub carrying the QR code. Mirrored by the ticket email
@@ -35,13 +36,11 @@ export default function IdCard({
   inviterPhotoUrl?: string | null;
   inviterName?: string | null;
 }) {
-  const d = eventDate ? new Date(eventDate) : null;
-  const dateLabel = d
-    ? d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+  /* Kigali time, matching the printed ticket and the email */
+  const dateLabel = eventDate
+    ? formatEventDate(eventDate, { weekday: "short", month: "short", day: "numeric", year: "numeric" })
     : "";
-  const timeLabel = d
-    ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    : "";
+  const timeLabel = eventDate ? formatEventTime(eventDate) : "";
   const typeLabel = type === "PLUS_ONE" ? "GUEST" : type;
 
   /* the pass carries a little cluster: the holder, whoever invited them
