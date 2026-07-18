@@ -45,6 +45,8 @@ const EmailLogSchema = new Schema<EmailLogDoc>(
 
 EmailLogSchema.index({ createdAt: -1 });
 EmailLogSchema.index({ kind: 1, status: 1 });
+/* fast "everything sent to this address" lookups */
+EmailLogSchema.index({ to: 1, createdAt: -1 });
 /* email bodies carry names + addresses — same 90-day PII sweep as
    notifications */
 EmailLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });

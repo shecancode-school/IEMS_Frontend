@@ -13,6 +13,17 @@ function transport(): Transporter {
   if (!cached) {
     cached = nodemailer.createTransport({
       service: "gmail",
+      /* pooling is the speed fix: without it every email pays a fresh TLS
+         handshake + Gmail login (1–3s). The pool keeps 4 authenticated
+         connections open and sends through them concurrently, so one email
+         costs ~200–500ms and a blast runs 4-wide. */
+      pool: true,
+      maxConnections: 4,
+      maxMessages: 100,
+      /* a wedged connection must fail fast, not stall a send for minutes */
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
@@ -314,10 +325,12 @@ async function deliver(
       ...extra,
     });
   } catch (err) {
-    await logEmail(kind, to, logged, "FAILED", err);
+    /* log writes are off the critical path — the send result never waits on
+       the database */
+    void logEmail(kind, to, logged, "FAILED", err);
     throw err;
   }
-  await logEmail(kind, to, logged, "SENT");
+  void logEmail(kind, to, logged, "SENT");
 }
 
 export async function sendMagicLinkEmail(to: string, name: string, url: string, eventName: string) {

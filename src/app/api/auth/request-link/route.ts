@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { after } from "next/server";
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Event, Participant, VerificationToken } from "@/models";
@@ -61,7 +62,16 @@ export async function POST(req: Request) {
       expiresAt: new Date(Date.now() + 30 * 60 * 1000),
     });
     const url = appUrl(`/verify/${token}`);
-    await sendMagicLinkEmail(email, match.name, url, match.eventName);
+    /* respond immediately; the email goes out right after the response —
+       the visitor isn't held on the SMTP round-trip */
+    const { name, eventName } = match;
+    after(async () => {
+      try {
+        await sendMagicLinkEmail(email, name, url, eventName);
+      } catch (err) {
+        console.error("magic link email failed", err);
+      }
+    });
   }
 
   return ok({ message: "If that email is registered, a verification link is on its way." });

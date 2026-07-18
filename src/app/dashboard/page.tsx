@@ -15,6 +15,7 @@ import {
   SkeletonBar,
 } from "@/components/portal/ui";
 import IdCard from "@/components/portal/IdCard";
+import ShareLinks from "@/components/portal/ShareLinks";
 import Confetti from "@/components/portal/Confetti";
 import { RichText } from "@/components/RichText";
 import { formatEventDate } from "@/lib/time";
@@ -520,6 +521,14 @@ function PlusOneCard({ me, onChanged }: { me: Me; onChanged: () => void }) {
           >
             {copied ? "Copied!" : "Copy link"}
           </Button>
+          <div className="pt-1">
+            <p className="label mb-2 text-[10px] font-semibold text-cream-dim">Or share it on</p>
+            <ShareLinks
+              url={inviteUrl}
+              text={`Join me at ${me.event?.name ?? "our event"} as my plus-one! Register here to get your pass:`}
+              title={`Plus-one invite — ${me.event?.name ?? "Igire Rwanda event"}`}
+            />
+          </div>
         </div>
       )}
       {error && <Note tone="error">{error}</Note>}
