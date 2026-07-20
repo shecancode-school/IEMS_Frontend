@@ -21,6 +21,8 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
     );
   }
 
+  //dep
+
   /* the live holder record (Participant or Guest); after check-in it's
      deleted and the ticket's holder snapshot fills in instead */
   const [holderDoc, event] = await Promise.all([
