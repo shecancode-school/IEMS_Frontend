@@ -247,7 +247,7 @@ export function EventForm({ mode, defaultValues, submitting, onSubmit, onCancel 
           )}
         </Section>
 
-        <Section title="Date & time" description="When the doors open and, optionally, close." cols={2}>
+        <Section title="Date & time" description="When the doors open and, optionally, close. Times are Kigali time (GMT+2)." cols={2}>
           <FormField
             control={form.control}
             name="startTime"

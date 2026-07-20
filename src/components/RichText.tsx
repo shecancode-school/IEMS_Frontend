@@ -6,6 +6,7 @@
 import DOMPurify from "isomorphic-dompurify";
 
 /* only the formatting the editor can produce; everything else is stripped */
+//testing
 const ALLOWED_TAGS = [
   "p", "br", "b", "strong", "i", "em", "u", "s",
   "ul", "ol", "li", "a", "h1", "h2", "h3", "h4", "blockquote", "code", "pre",

@@ -106,6 +106,7 @@ export function SkeletonBar({ className = "" }: { className?: string }) {
 
 export function Field({
   label,
+  className = "",
   ...props
 }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
@@ -113,7 +114,7 @@ export function Field({
       <span className="label mb-1.5 block text-xs font-semibold text-cream-dim">{label}</span>
       <input
         {...props}
-        className="w-full rounded-lg border border-line bg-panel-2 px-3.5 py-2.5 text-cream transition-colors placeholder:text-cream-dim/60 focus:outline-none"
+        className={`w-full rounded-lg border border-line bg-panel-2 px-3.5 py-2.5 text-cream transition-colors placeholder:text-cream-dim/60 focus:outline-none ${className}`}
       />
     </label>
   );

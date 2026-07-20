@@ -2,6 +2,7 @@
   "name": "iems",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.2",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -59,7 +60,7 @@
     "react-redux": "^9.3.0",
     "recharts": "3.8.0",
     "shadcn": "^4.13.0",
-    "sharp": "^0.35.3",
+    "sharp": "0.34.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "three": "^0.185.1",

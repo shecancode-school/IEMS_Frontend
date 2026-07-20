@@ -1,5 +1,6 @@
 import { isValidObjectId } from "mongoose";
 import { Event, eventDeadline, type EventDoc } from "@/models";
+import { eventDayISO, formatEventTime } from "./time";
 import type { VenueEvent } from "./events";
 
 /* Resolve a public (published, non-draft) event by either its ObjectId or its
@@ -67,15 +68,8 @@ export function capacityView(event: EventDoc) {
   };
 }
 
-function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-}
-
-function clockTime(d: Date): string {
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
+/* day + clock strings are computed in the event timezone, never the server's
+   — on UTC hosts the old server-local formatting showed times two hours off */
 
 /* The landing-page calendar shape, now carrying capacity + lifecycle status. */
 export function toVenueEvent(e: EventDoc, now = new Date()): VenueEvent {
@@ -83,9 +77,9 @@ export function toVenueEvent(e: EventDoc, now = new Date()): VenueEvent {
     id: e.slug,
     title: e.name,
     category: e.category,
-    date: isoDay(e.startTime),
-    time: clockTime(e.startTime),
-    endTime: e.endTime ? clockTime(e.endTime) : "",
+    date: eventDayISO(e.startTime),
+    time: formatEventTime(e.startTime),
+    endTime: e.endTime ? formatEventTime(e.endTime) : "",
     startsAt: e.startTime.toISOString(),
     endsAt: e.endTime ? e.endTime.toISOString() : null,
     space: e.location,

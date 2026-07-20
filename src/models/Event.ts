@@ -1,4 +1,5 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
+import { endOfEventDay } from "@/lib/time";
 
 /* IRO's real program areas — drives the public calendar colour coding */
 export const EVENT_CATEGORIES = [
@@ -99,10 +100,9 @@ export const Event: Model<EventDoc> =
   (models.Event as Model<EventDoc>) ?? model<EventDoc>("Event", EventSchema);
 
 /* Every ticket expires when its event wraps up: the explicit end time when
-   one is set, otherwise the end of the event day. */
+   one is set, otherwise the end of the event day (in Kigali time — computing
+   it in server-local time shifted the deadline on UTC hosts). */
 export function eventDeadline(event: Pick<EventDoc, "startTime" | "endTime">): Date {
   if (event.endTime) return new Date(event.endTime);
-  const end = new Date(event.startTime);
-  end.setHours(23, 59, 59, 999);
-  return end;
+  return endOfEventDay(event.startTime);
 }

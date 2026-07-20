@@ -21,4 +21,8 @@ export const adminKeys = {
   scanners: ["admin", "scanners"] as const,
 
   notifications: ["admin", "notifications"] as const,
+
+  emails: (f: { kind?: string; status?: string } = {}) => ["admin", "emails", f] as const,
+  emailTemplates: ["admin", "email-templates"] as const,
+  email: (id: string) => ["admin", "email", id] as const,
 };

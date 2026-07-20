@@ -56,7 +56,9 @@ export async function POST(req: Request, ctx: Ctx) {
   const event = participant && (await Event.findOne({ _id: participant.event, status: "OPEN" }));
   if (!participant || !event) return fail("Registration for this event is closed", 409);
 
-  const email = parsed.data.email.toLowerCase();
+  /* an invite addressed to a specific person is locked to that address —
+     whatever the form submits, the guest record gets the invited email */
+  const email = (invite.email ?? parsed.data.email).toLowerCase();
   let guest;
   try {
     guest = await Guest.create({

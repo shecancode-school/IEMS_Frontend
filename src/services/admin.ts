@@ -6,6 +6,11 @@ import { api } from "@/lib/client";
 import { bridgeGetToken } from "@/lib/authBridge";
 import type {
   AdminEvent,
+  EmailDetail,
+  EmailLogRow,
+  EmailReport,
+  EmailTemplatePreview,
+  SendPassResult,
   AdminGuest,
   AdminNotification,
   AdminParticipant,
@@ -187,6 +192,20 @@ export const notificationsService = {
       method: "PATCH",
       body: ids ? { ids } : {},
     }),
+};
+
+/* ---------------------------------------------------------------- Emails */
+export const emailsService = {
+  report: (filters: { kind?: string; status?: string } = {}) =>
+    api<{ report: EmailReport; logs: EmailLogRow[] }>(`/api/admin/emails${qs(filters)}`, {
+      role: "admin",
+    }),
+  templates: () =>
+    api<{ templates: EmailTemplatePreview[] }>("/api/admin/emails/templates", { role: "admin" }),
+  detail: (id: string) =>
+    api<{ email: EmailDetail }>(`/api/admin/emails/${id}`, { role: "admin" }),
+  sendPasses: (participantIds: string[]) =>
+    api<SendPassResult>("/api/admin/emails/send", { role: "admin", body: { participantIds } }),
 };
 
 /* Raw binary download (CSV/PDF) — the JSON api() helper can't stream blobs, so

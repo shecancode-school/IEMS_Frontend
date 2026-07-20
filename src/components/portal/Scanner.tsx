@@ -160,7 +160,27 @@ export default function Scanner({
   const [flash, setFlash] = useState<{ id: number; kind: FlashKind } | null>(null);
   const lastRef = useRef<{ payload: string; at: number }>({ payload: "", at: 0 });
   const snapshotRef = useRef<string | null>(null);
+  /* the live html5-qrcode instance — lets a decode freeze the video (pause)
+     and the verdict flash resume it */
+  const activeRef = useRef<Html5Qrcode | null>(null);
   const queryClient = useQueryClient();
+
+  /* freeze/unfreeze the camera around a scan: paused with the frame held on
+     screen while the ticket is checked, resumed when the verdict clears */
+  const pauseCamera = () => {
+    try {
+      activeRef.current?.pause(true);
+    } catch {
+      /* not scanning — nothing to pause */
+    }
+  };
+  const resumeCamera = () => {
+    try {
+      activeRef.current?.resume();
+    } catch {
+      /* camera was stopped or never paused — nothing to resume */
+    }
+  };
 
   /* the feed lives in the query cache so it survives tab switches */
   const { data: feed = [] } = useQuery<FeedItem[]>({
@@ -193,11 +213,14 @@ export default function Scanner({
     },
   });
 
-  /* the big verdict overlay is a momentary flash — clear it so the live camera
-     is unobstructed for the next pass */
+  /* the big verdict overlay is a momentary flash — when it clears, the frozen
+     camera resumes so the next pass can walk straight up */
   useEffect(() => {
     if (!flash) return;
-    const t = setTimeout(() => setFlash(null), 1800);
+    const t = setTimeout(() => {
+      setFlash(null);
+      resumeCamera();
+    }, 1800);
     return () => clearTimeout(t);
   }, [flash]);
   const scanRef = useRef(scan);
@@ -241,6 +264,9 @@ export default function Scanner({
       if (scanRef.current.isPending) return;
       lastRef.current = { payload: decoded, at: now };
       snapshotRef.current = captureFrame();
+      /* freeze the captured frame on screen and stop decoding while the
+         ticket is checked — the verdict flash resumes the camera after */
+      pauseCamera();
       scanRef.current.mutate(decoded);
     };
     const config = {
@@ -343,6 +369,7 @@ export default function Scanner({
           await active.stop().catch(() => {});
           return;
         }
+        activeRef.current = active;
         await tuneTrack();
       } catch (err) {
         if (!cancelled) {
@@ -354,6 +381,7 @@ export default function Scanner({
 
     return () => {
       cancelled = true;
+      activeRef.current = null;
       /* let the library tear its own video element down — yanking the
          container out of the DOM mid-stream triggers onabort errors */
       const s = active;
@@ -406,16 +434,30 @@ export default function Scanner({
       <Panel className={scanning ? "" : "hidden"}>
         <div className="relative mx-auto w-full max-w-sm">
           <div id="qr-reader" className="mx-auto overflow-hidden rounded-lg" />
+          {/* code captured → frame frozen → this loader sits over it while the
+              ticket is checked; the verdict then flashes in its place */}
+          <AnimatePresence>
+            {scan.isPending && !flash && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12 }}
+                className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/55 backdrop-blur-[2px]"
+              >
+                <span className="flex size-20 items-center justify-center rounded-full bg-orange/15 ring-4 ring-orange/40">
+                  <Spinner className="h-9 w-9 text-orange" />
+                </span>
+                <span className="display text-xl text-cream drop-shadow">Checking ticket…</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <ScanFlash flash={flash} />
         </div>
         <p className="mt-3 flex items-center justify-center gap-2 text-xs text-cream-dim">
-          {scan.isPending ? (
-            <>
-              <Spinner className="h-3.5 w-3.5 text-orange" /> Checking ticket…
-            </>
-          ) : (
-            "Hold a pass in front of the camera — scanning is continuous."
-          )}
+          {scan.isPending
+            ? "Code captured — verifying the pass."
+            : "Hold a pass in front of the camera — it scans automatically."}
         </p>
         <Button variant="outline" className="mt-3 w-full gap-2" onClick={() => setScanning(false)}>
           <CameraOff className="size-4" /> Stop camera

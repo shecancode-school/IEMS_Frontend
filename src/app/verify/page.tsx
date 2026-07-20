@@ -89,7 +89,7 @@ function VerifyFlow() {
               <h2 className="display text-2xl text-cream">Check your inbox</h2>
               <p className="mt-2 text-sm text-cream-dim">
                 If <b className="text-cream">{email}</b> is registered, a verification
-                link is on its way. Open it on this device to continue — it expires
+                link is on its way. Open it on this device to continue it expires
                 in 30 minutes.
               </p>
             </div>
@@ -173,7 +173,7 @@ function VerifyFlow() {
 export default function VerifyPage() {
   return (
     <PortalShell eyebrow="Ticket portal" title="Get your ticket">
-      <Suspense>derrickmugisha169@gmail.com
+      <Suspense>
         <VerifyFlow />
       </Suspense>
     </PortalShell>

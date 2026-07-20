@@ -4,6 +4,7 @@ import { dbConnect } from "@/lib/db";
 import { Event, Participant } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { sendEventReminderEmail, sendEventUpdateEmail } from "@/lib/mailer";
+import { formatEventDateTime } from "@/lib/time";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
 /* Optional custom message turns this into an event-update blast; without it a
@@ -28,7 +29,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const participants = await Participant.find({ event: event._id }).select("name email");
   if (participants.length === 0) return fail("No participants to notify", 409);
 
-  const whenLabel = event.startTime.toLocaleString("en-US", {
+  const whenLabel = formatEventDateTime(event.startTime, {
     weekday: "long",
     month: "long",
     day: "numeric",

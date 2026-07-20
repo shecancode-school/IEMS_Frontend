@@ -24,7 +24,7 @@ function FeaturedSkeleton() {
     <div
       role="status"
       aria-label="Loading the next event"
-      className="hero-item w-full max-w-sm animate-pulse overflow-hidden rounded-3xl border border-line bg-panel"
+      className="hero-card w-full max-w-sm animate-pulse overflow-hidden rounded-3xl border border-line bg-panel"
     >
       <div className="aspect-4/5 bg-panel-2" />
       <div className="space-y-3 p-5">
@@ -108,7 +108,7 @@ function FeaturedEventCard({
     <button
       type="button"
       onClick={onOpen}
-      className="hero-item group w-full max-w-sm cursor-pointer overflow-hidden rounded-3xl border border-line bg-panel text-left shadow-2xl shadow-black/40 transition-all hover:-translate-y-1 hover:border-orange"
+      className="hero-card group w-full max-w-sm cursor-pointer overflow-hidden rounded-3xl border border-line bg-panel text-left shadow-2xl shadow-black/40 transition-all hover:-translate-y-1 hover:border-orange"
     >
       <div className="relative aspect-4/5 w-full overflow-hidden bg-panel-2">
         {event.posterUrl ? (
@@ -189,19 +189,6 @@ function FeaturedEventCard({
 export default function Hero() {
   const rootRef = useRef<HTMLElement>(null);
 
-  useLayoutEffect(() => {
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) return;
-
-    const ctx = gsap.context(() => {
-      gsap
-        .timeline({ defaults: { ease: "power3.out" } })
-        .from(".hero-item", { opacity: 0, y: 26, duration: 0.8, stagger: 0.12 });
-    }, rootRef);
-
-    return () => ctx.revert();
-  }, []);
-
   const { data: events, isPending } = useEvents();
   const { openEvent } = useEventFlow();
 
@@ -209,6 +196,55 @@ export default function Hero() {
      whatever comes up next keeps the page alive */
   const open = (events ?? []).filter((e) => e.status === "OPEN");
   const upNext = nextEvent(open) ?? nextEvent(events ?? []);
+
+  /* intro for the copy column. clearProps wipes the inline styles the tween
+     leaves behind, so an interrupted animation can never strand an element
+     at opacity 0. */
+  useLayoutEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const ctx = gsap.context(() => {
+      gsap
+        .timeline({ defaults: { ease: "power3.out" } })
+        .from(".hero-item", {
+          opacity: 0,
+          y: 26,
+          duration: 0.8,
+          stagger: 0.12,
+          clearProps: "opacity,transform",
+        });
+    }, rootRef);
+
+    return () => ctx.revert();
+  }, []);
+
+  /* The featured card animates separately, and re-runs whenever the card
+     (re)appears — on a fresh load it isn't in the DOM yet when the intro
+     above fires (the skeleton is), and on back-navigation a cached render
+     puts it there immediately. Keying the effect to the card's identity
+     means it can never be captured at opacity 0 by a timeline that no
+     longer manages it. */
+  const cardKey = isPending ? "loading" : (upNext?.id ?? "none");
+  useLayoutEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        ".hero-card",
+        { opacity: 0, y: 26 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.8,
+          delay: 0.35,
+          ease: "power3.out",
+          clearProps: "opacity,transform",
+        }
+      );
+    }, rootRef);
+
+    return () => ctx.revert();
+  }, [cardKey]);
 
   return (
     <section ref={rootRef} className="relative overflow-hidden bg-bg">
@@ -255,7 +291,7 @@ export default function Hero() {
           ) : (
             <a
               href="#calendar"
-              className="hero-item mt-3 flex items-center gap-2.5 rounded-full border border-line bg-panel px-5 py-2.5 transition-colors hover:border-orange"
+              className="hero-card mt-3 flex items-center gap-2.5 rounded-full border border-line bg-panel px-5 py-2.5 transition-colors hover:border-orange"
             >
               <span className="text-sm text-cream-dim">
                 Nothing coming up yet — see the full calendar

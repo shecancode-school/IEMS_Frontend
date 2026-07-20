@@ -252,3 +252,82 @@ export type EventStat = {
   byStack: { _id: { stack: string | null; status: string }; n: number }[];
   tickets: Record<string, number>;
 };
+
+/* --------------------------------------------------------------- Emails */
+export const EMAIL_KINDS = [
+  "MAGIC_LINK",
+  "CONFIRMATION",
+  "PLUS_ONE_INVITE",
+  "TICKET",
+  "TICKET_NUDGE",
+  "REMINDER",
+  "UPDATE",
+] as const;
+export type EmailKind = (typeof EMAIL_KINDS)[number];
+
+export type EmailLogRow = {
+  id: string;
+  kind: EmailKind;
+  to: string;
+  subject: string;
+  status: "SENT" | "FAILED";
+  error: string | null;
+  at: string;
+};
+
+export type EmailFunnelRow = {
+  eventId: string;
+  eventName: string;
+  started: number;
+  neverVerified: number;
+  verifiedNotCompleted: number;
+  completed: number;
+};
+
+export type EmailReport = {
+  totals: {
+    sent: number;
+    failed: number;
+    sentLast7d: number;
+    byKind: Record<EmailKind, { sent: number; failed: number }>;
+  };
+  upcoming: {
+    ticketQueued: number;
+    awaitingTicketEmail: number;
+    confirmationQueued: number;
+    reminderPool: number;
+    total: number;
+  };
+  funnel: {
+    overall: Omit<EmailFunnelRow, "eventId" | "eventName"> & {
+      abandoned: number;
+      completionRate: number;
+    };
+    perEvent: EmailFunnelRow[];
+  };
+};
+
+export type EmailTemplatePreview = {
+  /* a kind, or a guest-type pass variant like "TICKET_VIP" */
+  id: string;
+  name: string;
+  description: string;
+  subject: string;
+  html: string;
+};
+
+export type EmailDetail = EmailLogRow & { html: string };
+
+export type SendPassResult = {
+  requested: number;
+  sent: number;
+  failed: number;
+  results: {
+    id: string;
+    name: string;
+    email: string;
+    action: "TICKET" | "NUDGE";
+    ok: boolean;
+    error?: string;
+  }[];
+};

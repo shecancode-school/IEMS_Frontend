@@ -33,9 +33,9 @@ const instrument = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Events Calendar — Igire Rwanda Organization",
+  title: "Events Calendar Igire Rwanda Organization",
   description:
-    "What's on at Igire Rwanda Organization — shows, workshops, exhibitions and community events in Kigali.",
+    "What's on at Igire Rwanda Organization shows, workshops, exhibitions and community events in Kigali.",
 };
 
 export default function RootLayout({
