@@ -200,9 +200,9 @@ function TicketsInner() {
           pageSize={12}
           toolbar={
             <>
-              <EventPicker value={event} onValueChange={setEvent} includeAll className="h-9 w-[170px]" />
+              <EventPicker value={event} onValueChange={setEvent} includeAll className="h-9 w-42.5" />
               <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-9 w-[130px]">
+                <SelectTrigger className="h-9 w-32.5">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>

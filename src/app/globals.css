@@ -39,7 +39,7 @@
   --destructive: var(--terracotta);
   --border: var(--line);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: var(--orange);
+  --ring: rgba(255, 255, 255, 0.4);
   --chart-1: var(--orange);
   --chart-2: var(--green);
   --chart-3: var(--tan);
@@ -53,7 +53,33 @@
   --sidebar-accent: var(--panel-2);
   --sidebar-accent-foreground: var(--cream);
   --sidebar-border: var(--line);
-  --sidebar-ring: var(--orange);
+  --sidebar-ring: rgba(255, 255, 255, 0.4);
+}
+
+/* Floating overlays are neutral near-black while page surfaces keep the green
+   theme. Utilities compile to the raw vars (@theme inline) and custom
+   properties resolve per element, so redefining them on every overlay
+   container restyles dialogs, menus, selects, popovers, tooltips and the
+   command palette in one place. */
+[data-slot="dialog-content"],
+[data-slot="dropdown-menu-content"],
+[data-slot="dropdown-menu-sub-content"],
+[data-slot="context-menu-content"],
+[data-slot="select-content"],
+[data-slot="popover-content"],
+[data-slot="hover-card-content"],
+[data-slot="tooltip-content"],
+[data-slot="command"] {
+  --popover: #0a0a0a;
+  --popover-foreground: #fafafa;
+  --accent: rgba(255, 255, 255, 0.1);
+  --accent-foreground: #ffffff;
+  --secondary: rgba(255, 255, 255, 0.1);
+  --secondary-foreground: #fafafa;
+  --muted: rgba(255, 255, 255, 0.1);
+  --muted-foreground: #a3a3a3;
+  --border: rgba(255, 255, 255, 0.12);
+  --line: rgba(255, 255, 255, 0.12);
 }
 
 @theme inline {

@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   LogOut,
+  Mail,
   PlusCircle,
   ScanLine,
   ShieldCheck,
@@ -32,7 +33,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+// import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,6 +58,7 @@ const MAIN = [
 
 const OPERATIONS = [
   { href: "/admin/scan", label: "Scan tickets", icon: ScanLine },
+  { href: "/admin/emails", label: "Emails", icon: Mail },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
   { href: "/admin/status", label: "API status", icon: Activity },
 ];
@@ -85,8 +87,8 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" className="data-[slot=sidebar-menu-button]:p-1.5!">
               <Link href="/admin/dashboard">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/95 p-1 shadow-sm">
-                  <Image src="/iro-logo.svg" alt="" width={28} height={28} className="size-6" />
+                <span className="flex size-8 shrink-0 items-center justify-center p-1">
+                  <Image src="/iro-logo.svg" alt="side bar Logo" width={24} height={28} className="size-6" />
                 </span>
                 <span className="display text-base font-semibold tracking-wide">IEMS Admin</span>
               </Link>
@@ -111,11 +113,11 @@ export function AppSidebar() {
                     <span>New event</span>
                   </Link>
                 </SidebarMenuButton>
-                <Button asChild size="icon" variant="outline" className="size-8 shrink-0 group-data-[collapsible=icon]:opacity-0">
+                {/* <Button asChild size="icon" variant="outline" className="size-8 shrink-0 group-data-[collapsible=icon]:opacity-0">
                   <Link href="/admin/notifications" aria-label="Notifications">
                     <Bell />
                   </Link>
-                </Button>
+                </Button> */}
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

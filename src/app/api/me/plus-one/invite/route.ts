@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { after } from "next/server";
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
 import { Event, Guest, Participant, VerificationToken } from "@/models";
@@ -39,7 +40,17 @@ export async function POST(req: Request) {
 
   const inviteUrl = appUrl(`/plus-one/${token}`);
   if (parsed.data.email) {
-    await sendPlusOneInviteEmail(parsed.data.email, participant.name, inviteUrl, event.name);
+    /* respond with the link immediately; the invite email follows right
+       after the response instead of holding it up */
+    const guestEmail = parsed.data.email;
+    const participantName = participant.name;
+    after(async () => {
+      try {
+        await sendPlusOneInviteEmail(guestEmail, participantName, inviteUrl, event.name);
+      } catch (err) {
+        console.error("plus-one invite email failed", err);
+      }
+    });
   }
   return ok({ inviteUrl });
 }

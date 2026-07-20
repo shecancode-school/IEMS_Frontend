@@ -37,8 +37,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { formatEventDateTime } from "@/lib/time";
+
+/* event times always render in Kigali time, matching what the admin typed */
 const dt = (s: string) =>
-  new Date(s).toLocaleString("en-US", {
+  formatEventDateTime(s, {
     weekday: "short",
     month: "short",
     day: "numeric",

@@ -13,7 +13,7 @@ export default function AdminApiDocsPage() {
         description="The live OpenAPI spec — browse endpoints and try requests inline."
       />
       <Card className="overflow-hidden bg-white p-0 text-neutral-900 shadow-none">
-        <ApiDocs className="min-h-[500px]" />
+        <ApiDocs className="min-h-125" />
       </Card>
     </div>
   );

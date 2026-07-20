@@ -119,10 +119,22 @@ export default function PlusOnePage({ params }: { params: Promise<{ token: strin
               <Field
                 label="Email"
                 type="email"
-                required
+                required={!invite.email}
                 value={email}
+                disabled={Boolean(invite.email)}
+                title={invite.email ? "This invite was sent to this address" : undefined}
+                className={
+                  invite.email
+                    ? "cursor-not-allowed select-none border-line/60 bg-panel-2/50 text-cream-dim opacity-70"
+                    : ""
+                }
                 onChange={(e) => setEmail(e.target.value)}
               />
+              {invite.email && (
+                <p className="-mt-2 text-left text-xs text-cream-dim">
+                  This invite was sent to this address, so it can&apos;t be changed.
+                </p>
+              )}
               <Select
                 label="Gender"
                 required
