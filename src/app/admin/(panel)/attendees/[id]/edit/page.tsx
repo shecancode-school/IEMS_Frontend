@@ -40,6 +40,7 @@ export default function EditParticipantPage({ params }: { params: Promise<{ id: 
     if (p)
       form.reset({
         name: p.name,
+        email: p.email,
         phone: p.phone ?? "",
         stack: p.stack ?? undefined,
         gender: p.gender ?? undefined,
@@ -78,6 +79,19 @@ export default function EditParticipantPage({ params }: { params: Promise<{ id: 
                       <FormLabel>Full name</FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

@@ -3,6 +3,7 @@ import { dbConnect } from "@/lib/db";
 import {
   Event,
   GENDERS,
+  Guest,
   PARTICIPANT_STATUSES,
   Participant,
   REGISTRATION_STATUSES,
@@ -43,8 +44,18 @@ export async function GET(req: Request) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     filter.$or = [{ name: rx }, { email: rx }, { phone: rx }];
   }
+  /* "none" = participants who haven't invited a plus-one (the reminder pool),
+     "has" = those who have one. Resolved against the Guest.inviter back-link. */
+  const plusOne = pick(url.searchParams.get("plusOne"), ["none", "has"] as const);
 
   await dbConnect();
+  if (plusOne) {
+    const guestFilter: Record<string, unknown> = { inviter: { $ne: null } };
+    if (eventId) guestFilter.event = eventId;
+    const inviterIds = await Guest.find(guestFilter).distinct("inviter");
+    filter._id = plusOne === "has" ? { $in: inviterIds } : { $nin: inviterIds };
+  }
+
   const participants = await Participant.find(filter)
     .sort({ createdAt: 1 })
     .limit(500)
@@ -88,9 +99,11 @@ export async function GET(req: Request) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     holderFilter.$or = [{ "holder.name": rx }, { "holder.email": rx }];
   }
-  /* an archived holder is by definition COMPLETE */
+  /* an archived holder is by definition COMPLETE. The plus-one filter works off
+     the live Guest link, which checked-in snapshots no longer have — so skip
+     them entirely when it's active. */
   const attended =
-    status && status !== "COMPLETE"
+    plusOne || (status && status !== "COMPLETE")
       ? []
       : await Ticket.find(holderFilter)
           .sort({ scannedAt: -1 })
