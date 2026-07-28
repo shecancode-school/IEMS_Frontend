@@ -6,6 +6,7 @@ import {
   STACKS,
   GENDERS,
   GUEST_TYPES,
+  RELATIONSHIPS,
   REGISTRATION_STATUSES,
 } from "@/types/admin";
 
@@ -70,12 +71,22 @@ export type ParticipantCreateValues = z.output<typeof participantCreateSchema>;
 
 export const participantEditSchema = z.object({
   name: z.string().min(2).optional(),
+  email: z.string().email("Valid email required").optional(),
   phone: z.string().min(6).optional().or(z.literal("")),
   stack: z.enum(STACKS).optional(),
   gender: z.enum(GENDERS).optional(),
   registrationStatus: z.enum(REGISTRATION_STATUSES).optional(),
 });
 export type ParticipantEditValues = z.output<typeof participantEditSchema>;
+
+/* Admin form for assigning (or reassigning) a participant's plus-one. */
+export const plusOneAssignSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Valid email required"),
+  gender: z.enum(GENDERS).optional(),
+  relationship: z.enum(RELATIONSHIPS).optional(),
+});
+export type PlusOneAssignValues = z.output<typeof plusOneAssignSchema>;
 
 export const guestCreateSchema = z.object({
   eventId: z.string().min(1, "Choose an event"),
