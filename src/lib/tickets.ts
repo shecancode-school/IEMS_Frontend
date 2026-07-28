@@ -257,6 +257,9 @@ export async function emailTicket(holder: Holder, event: EventDoc, code: string)
     qrPng: qr,
     photo,
     eventImage,
+    eventType: event.type,
+    price: event.price,
+    organiser: event.organiser,
   });
 
   await sendTicketEmail({

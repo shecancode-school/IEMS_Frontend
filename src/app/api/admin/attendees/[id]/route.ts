@@ -101,6 +101,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 const PatchBody = z
   .object({
     name: z.string().min(2),
+    email: z.string().email(),
     phone: z.string().min(6),
     stack: z.enum(STACKS),
     gender: z.enum(GENDERS),
@@ -125,11 +126,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const d = parsed.data;
   if (d.name !== undefined) p.name = d.name;
+  if (d.email !== undefined) p.email = d.email.toLowerCase();
   if (d.phone !== undefined) p.phone = d.phone;
   if (d.stack !== undefined) p.stack = d.stack;
   if (d.gender !== undefined) p.gender = d.gender;
   if (d.registrationStatus !== undefined) p.registrationStatus = d.registrationStatus;
-  await p.save();
+  try {
+    await p.save();
+  } catch (err: unknown) {
+    /* unique (event,email) — another registration already uses this address */
+    if (err && typeof err === "object" && "code" in err && err.code === 11000) {
+      return fail("That email is already registered for this event", 409);
+    }
+    throw err;
+  }
 
   /* rejecting revokes any live ticket + frees the seat */
   if (d.registrationStatus === "REJECTED") {

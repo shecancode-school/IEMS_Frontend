@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { emailsService } from "@/services/admin";
+import { emailsService, remindersService } from "@/services/admin";
 import { adminKeys } from "./keys";
 import { errorMessage } from "./util";
 
@@ -34,6 +34,27 @@ export function useSendPassEmails() {
       qc.invalidateQueries({ queryKey: adminKeys.participantsAll });
       if (r.failed === 0) toast.success(`Sent to all ${r.sent} recipient${r.sent === 1 ? "" : "s"}`);
       else toast.warning(`Sent ${r.sent} of ${r.requested} — ${r.failed} failed`);
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+}
+
+/* fires the same daily status-aware reminder pass the cron runs, on demand */
+export function useRunReminders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => remindersService.runNow(),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["admin", "emails"] });
+      qc.invalidateQueries({ queryKey: ["admin", "event-engagement"] });
+      if (r.sent === 0 && r.skipped === 0)
+        toast.success("Everyone is up to date — no reminders needed");
+      else
+        toast.success(
+          `Sent ${r.sent} reminder${r.sent === 1 ? "" : "s"}` +
+            (r.skipped ? `, skipped ${r.skipped} recently reminded` : "") +
+            (r.failed ? ` — ${r.failed} failed` : "")
+        );
     },
     onError: (e) => toast.error(errorMessage(e)),
   });

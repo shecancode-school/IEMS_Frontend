@@ -4,6 +4,8 @@ import {
   renderRegistrationConfirmation,
   renderEventUpdateEmail,
   renderEventReminderEmail,
+  renderProgressReminderEmail,
+  renderPlusOneRevokedEmail,
   renderTicketEmail,
   renderTicketNudgeEmail,
 } from "@/lib/mailer";
@@ -129,6 +131,51 @@ export async function GET(req: Request) {
         eventName: sample.eventName,
         whenLabel: "on Friday, August 14 at 2:00 PM",
       }),
+    },
+    {
+      id: "PROGRESS_REMINDER_VERIFY",
+      name: "Progress reminder — verify email",
+      description:
+        "Daily nudge to someone who registered but never verified their email address.",
+      ...renderProgressReminderEmail({
+        name: sample.name,
+        eventName: sample.eventName,
+        step: "VERIFY",
+        url: appUrl("/verify/sample-token"),
+        whenLabel: "on Friday, August 14",
+      }),
+    },
+    {
+      id: "PROGRESS_REMINDER_FINISH",
+      name: "Progress reminder — finish profile",
+      description:
+        "Daily nudge to someone who verified their email but hasn't added a photo, so no pass is issued yet.",
+      ...renderProgressReminderEmail({
+        name: sample.name,
+        eventName: sample.eventName,
+        step: "FINISH",
+        url: appUrl("/verify/sample-token"),
+        whenLabel: "on Friday, August 14",
+      }),
+    },
+    {
+      id: "PROGRESS_REMINDER_PLUS_ONE",
+      name: "Progress reminder — invite a plus-one",
+      description:
+        "Daily nudge to a fully-registered participant who hasn't invited their allowed guest yet.",
+      ...renderProgressReminderEmail({
+        name: sample.name,
+        eventName: sample.eventName,
+        step: "PLUS_ONE",
+        url: appUrl("/verify/sample-token"),
+        whenLabel: "on Friday, August 14",
+      }),
+    },
+    {
+      id: "PLUS_ONE_REVOKED",
+      name: "Plus-one removed",
+      description: "Sent to a plus-one when an admin withdraws their guest pass.",
+      ...renderPlusOneRevokedEmail({ name: "Eric Mugisha", eventName: sample.eventName }),
     },
     {
       id: "UPDATE",

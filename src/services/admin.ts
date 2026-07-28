@@ -28,9 +28,11 @@ import type {
   GuestEditValues,
   ParticipantCreateValues,
   ParticipantEditValues,
+  PlusOneAssignValues,
   ScannerCreateValues,
   ScannerEditValues,
 } from "@/schemas/admin";
+import type { EventEngagement, ReminderSummary } from "@/types/admin";
 
 const qs = (params: Record<string, string | undefined>) => {
   const sp = new URLSearchParams();
@@ -78,6 +80,8 @@ export const eventsService = {
       `/api/admin/events/${id}/reminders`,
       { role: "admin", body: message ? { message } : {} }
     ),
+  stats: (id: string) =>
+    api<EventEngagement>(`/api/admin/events/${id}/stats`, { role: "admin" }),
 };
 
 /* ---------------------------------------------------------- Participants */
@@ -87,6 +91,8 @@ export type ParticipantFilters = {
   registrationStatus?: string;
   event?: string;
   q?: string;
+  /** "none" = no plus-one invited yet, "has" = has one */
+  plusOne?: string;
 };
 
 export const participantsService = {
@@ -106,6 +112,21 @@ export const participantsService = {
     }),
   remove: (id: string) =>
     api<{ deleted: boolean }>(`/api/admin/attendees/${id}`, { role: "admin", method: "DELETE" }),
+  revokePlusOne: (id: string) =>
+    api<{ revoked: boolean }>(`/api/admin/attendees/${id}/plus-one`, {
+      role: "admin",
+      method: "DELETE",
+    }),
+  assignPlusOne: (id: string, body: PlusOneAssignValues) =>
+    api<{ plusOne: { id: string; name: string; email: string; ticketCode?: string } }>(
+      `/api/admin/attendees/${id}/plus-one`,
+      { role: "admin", body }
+    ),
+};
+
+/* ------------------------------------------------------------- Reminders */
+export const remindersService = {
+  runNow: () => api<ReminderSummary>("/api/admin/reminders/run", { role: "admin", method: "POST" }),
 };
 
 /* ---------------------------------------------------------------- Guests */

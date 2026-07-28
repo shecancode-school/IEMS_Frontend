@@ -56,12 +56,14 @@ function ParticipantsInner() {
   const [registration, setRegistration] = useState("all");
   const [status, setStatus] = useState("all");
   const [stack, setStack] = useState("all");
+  const [plusOne, setPlusOne] = useState("all");
 
   const filters = {
     event: event === "all" ? undefined : event,
     registrationStatus: registration === "all" ? undefined : registration,
     status: status === "all" ? undefined : status,
     stack: stack === "all" ? undefined : stack,
+    plusOne: plusOne === "all" ? undefined : plusOne,
   };
   const { data, isPending, error, refetch } = useParticipants(filters);
   const setReg = useSetRegistrationStatus();
@@ -283,6 +285,16 @@ function ParticipantsInner() {
                       {s}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+              <Select value={plusOne} onValueChange={setPlusOne}>
+                <SelectTrigger className="h-9 w-37.5">
+                  <SelectValue placeholder="Plus-one" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any plus-one</SelectItem>
+                  <SelectItem value="none">No plus-one</SelectItem>
+                  <SelectItem value="has">Has plus-one</SelectItem>
                 </SelectContent>
               </Select>
             </>
