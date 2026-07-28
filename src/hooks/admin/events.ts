@@ -21,6 +21,21 @@ export function useEvent(id: string) {
   return { ...q, data: q.data?.find((e) => e.id === id) };
 }
 
+/* per-event engagement: reminder pool, plus-one split, emails-by-kind. Driven
+   live by the admin SSE sync (check-ins, guest-adds, event edits); the interval
+   is a fallback for changes that don't emit a socket event — e.g. a participant
+   verifying or completing their own profile. */
+export function useEventEngagement(id: string) {
+  return useQuery({
+    queryKey: adminKeys.eventEngagement(id),
+    queryFn: () => eventsService.stats(id),
+    enabled: !!id,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useCreateEvent() {
   const qc = useQueryClient();
   return useMutation({

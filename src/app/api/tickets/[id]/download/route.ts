@@ -49,6 +49,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     qrPng: qr,
     photo,
     eventImage,
+    eventType: event?.type,
+    price: event?.price,
+    organiser: event?.organiser,
   });
 
   return new Response(new Uint8Array(pdf), {
