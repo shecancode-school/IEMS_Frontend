@@ -32,6 +32,16 @@ export type Stack = (typeof STACKS)[number];
 export const GENDERS = ["FEMALE", "MALE", "OTHER"] as const;
 export type Gender = (typeof GENDERS)[number];
 
+export const RELATIONSHIPS = [
+  "RELATIVE",
+  "FRIEND",
+  "COLLEAGUE",
+  "PARTNER",
+  "MENTOR",
+  "OTHER",
+] as const;
+export type Relationship = (typeof RELATIONSHIPS)[number];
+
 export const PARTICIPANT_STATUSES = ["PENDING", "VERIFIED", "COMPLETE"] as const;
 export type ParticipantStatus = (typeof PARTICIPANT_STATUSES)[number];
 
@@ -261,6 +271,8 @@ export const EMAIL_KINDS = [
   "TICKET",
   "TICKET_NUDGE",
   "REMINDER",
+  "PROGRESS_REMINDER",
+  "PLUS_ONE_REVOKED",
   "UPDATE",
 ] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];
@@ -330,4 +342,25 @@ export type SendPassResult = {
     ok: boolean;
     error?: string;
   }[];
+};
+
+/* result of a daily progress-reminder run (cron or admin "run now") */
+export type ReminderSummary = {
+  scanned: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+};
+
+/* per-event engagement stats (GET /api/admin/events/[id]/stats) */
+export type EventEngagement = {
+  funnel: { pending: number; verified: number; complete: number; total: number };
+  reminderPool: {
+    verifyEmail: number;
+    finishProfile: number;
+    invitePlusOne: number;
+    total: number;
+  };
+  plusOne: { has: number; none: number };
+  emails: { total: number; byKind: Record<EmailKind, { sent: number; failed: number }> };
 };

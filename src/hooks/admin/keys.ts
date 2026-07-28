@@ -6,6 +6,7 @@ export const adminKeys = {
   eventStats: ["admin", "event-stats"] as const,
 
   events: ["admin", "events"] as const,
+  eventEngagement: (id: string) => ["admin", "event-engagement", id] as const,
 
   participants: (f: ParticipantFilters = {}) => ["admin", "participants", f] as const,
   participantsAll: ["admin", "participants"] as const,
