@@ -19,6 +19,11 @@ export function useAdminLiveSync() {
       qc.invalidateQueries({ queryKey: adminKeys.ticketsAll });
       qc.invalidateQueries({ queryKey: adminKeys.participantsAll });
       qc.invalidateQueries({ queryKey: adminKeys.guests });
+      /* per-event engagement (reminder pool, plus-one split) + the email report
+         all move with headcounts and sends — refresh them live too. Prefix keys
+         match every id/filter variant. */
+      qc.invalidateQueries({ queryKey: ["admin", "event-engagement"] });
+      qc.invalidateQueries({ queryKey: ["admin", "emails"] });
     };
     const offLive = subscribeLive("admin", {
       onScan: onActivity,
@@ -30,6 +35,7 @@ export function useAdminLiveSync() {
       qc.invalidateQueries({ queryKey: adminKeys.events });
       qc.invalidateQueries({ queryKey: adminKeys.eventStats });
       qc.invalidateQueries({ queryKey: adminKeys.dashboard });
+      qc.invalidateQueries({ queryKey: ["admin", "event-engagement"] });
     });
 
     return () => {

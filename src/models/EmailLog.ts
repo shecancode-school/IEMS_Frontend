@@ -8,6 +8,8 @@ export const EMAIL_KINDS = [
   "TICKET", // the event pass with QR + PDF
   "TICKET_NUDGE", // admin nudge: finish your registration to receive your pass
   "REMINDER", // "your event is coming up"
+  "PROGRESS_REMINDER", // daily status-aware nudge: verify / finish / invite a plus-one
+  "PLUS_ONE_REVOKED", // a participant's plus-one was removed by an admin
   "UPDATE", // admin broadcast about an event
 ] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];

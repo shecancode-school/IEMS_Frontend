@@ -19,8 +19,16 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-import { useEvent, useDeleteEvent, useUpdateEvent, useUploadEventImage, useSendReminders } from "@/hooks/admin/events";
+import {
+  useEvent,
+  useDeleteEvent,
+  useUpdateEvent,
+  useUploadEventImage,
+  useSendReminders,
+  useEventEngagement,
+} from "@/hooks/admin/events";
 import { useEventStats } from "@/hooks/admin/dashboard";
+import type { EmailKind, EventEngagement } from "@/types/admin";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { StatCard } from "@/components/admin/StatCard";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -55,6 +63,7 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const { data: event, isPending } = useEvent(id);
   const stats = useEventStats();
+  const engagement = useEventEngagement(id);
   const del = useDeleteEvent();
   const update = useUpdateEvent();
   const upload = useUploadEventImage();
@@ -196,6 +205,8 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
+          <EngagementCard data={engagement.data} loading={engagement.isPending} />
+
           <Card className="shadow-none">
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle className="text-base">Gallery</CardTitle>
@@ -271,6 +282,102 @@ function Detail({
         <dt className="text-xs text-muted-foreground">{label}</dt>
         <dd className="font-medium text-foreground">{value}</dd>
       </div>
+    </div>
+  );
+}
+
+const EMAIL_KIND_LABEL: Record<EmailKind, string> = {
+  MAGIC_LINK: "Verify email",
+  CONFIRMATION: "Registration confirmed",
+  PLUS_ONE_INVITE: "Plus-one invite",
+  TICKET: "Event pass",
+  TICKET_NUDGE: "Get your ticket",
+  REMINDER: "Event reminder",
+  PROGRESS_REMINDER: "Progress reminder",
+  PLUS_ONE_REVOKED: "Plus-one removed",
+  UPDATE: "Event update",
+};
+
+/* per-event engagement: who still needs a nudge, the plus-one split, and which
+   emails have actually reached this event's people */
+function EngagementCard({ data, loading }: { data?: EventEngagement; loading: boolean }) {
+  const sentKinds = data
+    ? (Object.entries(data.emails.byKind) as [EmailKind, { sent: number; failed: number }][])
+        .filter(([, v]) => v.sent > 0 || v.failed > 0)
+        .sort((a, b) => b[1].sent - a[1].sent)
+    : [];
+
+  return (
+    <Card className="shadow-none">
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle className="text-base">Engagement</CardTitle>
+        {data && (
+          <Badge variant="outline" className="rounded-full">
+            {data.reminderPool.total} to nudge
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-5 text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <MiniStat label="Applicants" value={data?.funnel.total} loading={loading} />
+          <MiniStat label="Plus-ones" value={data?.plusOne.has} loading={loading} />
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Reminder pool
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <MiniStat label="Verify email" value={data?.reminderPool.verifyEmail} loading={loading} />
+            <MiniStat label="Finish profile" value={data?.reminderPool.finishProfile} loading={loading} />
+            <MiniStat label="Invite plus-one" value={data?.reminderPool.invitePlusOne} loading={loading} />
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Plus-ones
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <MiniStat label="Has plus-one" value={data?.plusOne.has} loading={loading} />
+            <MiniStat label="No plus-one" value={data?.plusOne.none} loading={loading} />
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Emails sent {data ? `(${data.emails.total})` : ""}
+          </p>
+          {loading ? (
+            <p className="text-muted-foreground">Loading…</p>
+          ) : sentKinds.length === 0 ? (
+            <p className="text-muted-foreground">No emails have reached this event&apos;s people yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {sentKinds.map(([kind, v]) => (
+                <div key={kind} className="flex items-center justify-between gap-3">
+                  <span className="font-medium">{EMAIL_KIND_LABEL[kind]}</span>
+                  <span className="flex items-center gap-2 tabular-nums text-muted-foreground">
+                    <span className="text-green-700">{v.sent} sent</span>
+                    {v.failed > 0 && <span className="text-red-600">{v.failed} failed</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MiniStat({ label, value, loading }: { label: string; value?: number; loading: boolean }) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-xl font-semibold tabular-nums text-foreground">
+        {loading ? "—" : (value ?? 0)}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }
