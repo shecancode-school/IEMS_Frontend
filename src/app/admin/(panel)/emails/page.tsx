@@ -12,9 +12,16 @@ import {
   Send,
   UserX,
 } from "lucide-react";
-import { useEmailDetail, useEmailReport, useEmailTemplates, useSendPassEmails } from "@/hooks/admin/emails";
+import {
+  useEmailDetail,
+  useEmailReport,
+  useEmailTemplates,
+  useRunReminders,
+  useSendPassEmails,
+} from "@/hooks/admin/emails";
 import { useParticipants } from "@/hooks/admin/participants";
 import { EventPicker } from "@/components/admin/EventPicker";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PageHeader } from "@/components/admin/PageHeader";
@@ -26,8 +33,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { AdminParticipant, EmailKind, EmailLogRow, EmailTemplatePreview } from "@/types/admin";
+import {
+  EMAIL_KINDS,
+  type AdminParticipant,
+  type EmailKind,
+  type EmailLogRow,
+  type EmailTemplatePreview,
+} from "@/types/admin";
 
 const KIND_LABEL: Record<EmailKind, string> = {
   MAGIC_LINK: "Verify email",
@@ -36,6 +56,8 @@ const KIND_LABEL: Record<EmailKind, string> = {
   TICKET: "Event pass",
   TICKET_NUDGE: "Get your ticket",
   REMINDER: "Reminder",
+  PROGRESS_REMINDER: "Progress reminder",
+  PLUS_ONE_REVOKED: "Plus-one removed",
   UPDATE: "Event update",
 };
 
@@ -48,8 +70,16 @@ const when = (iso: string) =>
   });
 
 export default function EmailsPage() {
-  const { data, isPending, error, refetch } = useEmailReport();
   const [openLogId, setOpenLogId] = useState<string | null>(null);
+  const [logKind, setLogKind] = useState("all");
+  const [logStatus, setLogStatus] = useState("all");
+  const runReminders = useRunReminders();
+
+  const logFilters = {
+    kind: logKind === "all" ? undefined : logKind,
+    status: logStatus === "all" ? undefined : logStatus,
+  };
+  const { data, isPending, error, refetch } = useEmailReport(logFilters);
 
   if (error) return <ErrorState message="Couldn't load the email report." onRetry={refetch} />;
 
@@ -61,6 +91,22 @@ export default function EmailsPage() {
       <PageHeader
         title="Emails"
         crumbs={[{ label: "Emails" }]}
+        actions={
+          <ConfirmDialog
+            trigger={
+              <Button variant="outline" disabled={runReminders.isPending}>
+                <MailCheck className="size-4" />
+                {runReminders.isPending ? "Sending…" : "Send progress reminders"}
+              </Button>
+            }
+            title="Send progress reminders now?"
+            description="Emails a status-aware nudge to every participant of an upcoming open event who still has a step to finish — verify their email, complete their profile, or invite a plus-one. People reminded in the last 20 hours are skipped. This is the same job that runs automatically each day."
+            confirmLabel="Send reminders"
+            onConfirm={async () => {
+              await runReminders.mutateAsync();
+            }}
+          />
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -133,7 +179,15 @@ export default function EmailsPage() {
         </TabsContent>
 
         <TabsContent value="log" className="mt-4">
-          <LogTab logs={logs} loading={isPending} onOpen={setOpenLogId} />
+          <LogTab
+            logs={logs}
+            loading={isPending}
+            onOpen={setOpenLogId}
+            kind={logKind}
+            status={logStatus}
+            onKindChange={setLogKind}
+            onStatusChange={setLogStatus}
+          />
         </TabsContent>
       </Tabs>
 
@@ -523,11 +577,47 @@ function LogTab({
   logs,
   loading,
   onOpen,
+  kind,
+  status,
+  onKindChange,
+  onStatusChange,
 }: {
   logs: EmailLogRow[];
   loading: boolean;
   onOpen: (id: string) => void;
+  kind: string;
+  status: string;
+  onKindChange: (v: string) => void;
+  onStatusChange: (v: string) => void;
 }) {
+  const filters = (
+    <>
+      <Select value={kind} onValueChange={onKindChange}>
+        <SelectTrigger className="h-9 w-44">
+          <SelectValue placeholder="Type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All types</SelectItem>
+          {EMAIL_KINDS.map((k) => (
+            <SelectItem key={k} value={k}>
+              {KIND_LABEL[k]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={status} onValueChange={onStatusChange}>
+        <SelectTrigger className="h-9 w-36">
+          <SelectValue placeholder="Status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All statuses</SelectItem>
+          <SelectItem value="SENT">Sent</SelectItem>
+          <SelectItem value="FAILED">Failed</SelectItem>
+        </SelectContent>
+      </Select>
+    </>
+  );
+
   const columns: Column<EmailLogRow>[] = [
     {
       id: "kind",
@@ -574,6 +664,7 @@ function LogTab({
       searchable={(r) => `${r.to} ${r.subject} ${r.kind}`}
       searchPlaceholder="Search recipient or subject…"
       pageSize={12}
+      toolbar={filters}
       empty={
         <EmptyState
           title="No emails logged yet"
