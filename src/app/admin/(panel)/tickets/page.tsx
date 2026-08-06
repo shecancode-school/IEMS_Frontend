@@ -1,10 +1,20 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, MoreHorizontal, RotateCcw, Send, Ticket as TicketIcon, Trash2, Ban } from "lucide-react";
-import { useTickets, useTicketAction } from "@/hooks/admin/tickets";
+import { useRouter } from "next/navigation";
+import {
+  Ban,
+  Download,
+  Eye,
+  MoreHorizontal,
+  RotateCcw,
+  Send,
+  Ticket as TicketIcon,
+  Trash2,
+} from "lucide-react";
+import { useTickets, useTicketAction, useExportTickets } from "@/hooks/admin/tickets";
+import { useStickyFilters } from "@/hooks/admin/useStickyFilters";
 import { TICKET_STATUSES, type AdminTicket } from "@/types/admin";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable, type Column } from "@/components/admin/DataTable";
@@ -30,15 +40,20 @@ import {
 
 function TicketsInner() {
   const router = useRouter();
-  const params = useSearchParams();
-  const [event, setEvent] = useState(params.get("event") ?? "all");
-  const [status, setStatus] = useState("all");
-
-  const { data, isPending, error, refetch } = useTickets({
-    event: event === "all" ? undefined : event,
-    status: status === "all" ? undefined : status,
+  /* filters live in the URL + sessionStorage, so opening a ticket and coming
+     back lands on the same selection */
+  const { filters, setFilter, isFiltered } = useStickyFilters("tickets", {
+    event: "all",
+    status: "all",
+    q: "",
   });
+  const query = {
+    event: filters.event === "all" ? undefined : filters.event,
+    status: filters.status === "all" ? undefined : filters.status,
+  };
+  const { data, isPending, error, refetch } = useTickets(query);
   const action = useTicketAction();
+  const exportCsv = useExportTickets();
 
   const columns: Column<AdminTicket>[] = [
     {
@@ -165,12 +180,22 @@ function TicketsInner() {
         title="Tickets"
         description="Every issued pass — resend, reset, revoke or generate new ones."
         actions={
-          <Button asChild>
-            <Link href="/admin/tickets/new">
-              <TicketIcon className="size-4" />
-              Generate ticket
-            </Link>
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => exportCsv.mutate({ ...query, q: filters.q || undefined })}
+              disabled={exportCsv.isPending || (data ?? []).length === 0}
+            >
+              <Download className="size-4" />
+              Export CSV
+            </Button>
+            <Button asChild>
+              <Link href="/admin/tickets/new">
+                <TicketIcon className="size-4" />
+                Generate ticket
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -178,7 +203,7 @@ function TicketsInner() {
         <TableSkeleton cols={6} />
       ) : error ? (
         <ErrorState message={error.message} onRetry={() => refetch()} />
-      ) : (data ?? []).length === 0 ? (
+      ) : (data ?? []).length === 0 && !isFiltered ? (
         <EmptyState
           icon={<TicketIcon className="size-5" />}
           title="No tickets"
@@ -197,11 +222,18 @@ function TicketsInner() {
           onRowClick={(t) => router.push(`/admin/tickets/${t.id}`)}
           searchable={(t) => `${t.ticketNumber} ${t.participantName} ${t.eventName ?? ""}`}
           searchPlaceholder="Search by number or holder…"
+          searchValue={filters.q}
+          onSearchChange={(v) => setFilter("q", v)}
           pageSize={12}
           toolbar={
             <>
-              <EventPicker value={event} onValueChange={setEvent} includeAll className="h-9 w-42.5" />
-              <Select value={status} onValueChange={setStatus}>
+              <EventPicker
+                value={filters.event}
+                onValueChange={(v) => setFilter("event", v)}
+                includeAll
+                className="h-9 w-42.5"
+              />
+              <Select value={filters.status} onValueChange={(v) => setFilter("status", v)}>
                 <SelectTrigger className="h-9 w-32.5">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>

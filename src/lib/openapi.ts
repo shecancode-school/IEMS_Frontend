@@ -1374,11 +1374,53 @@ export const openApiSpec = {
     "/api/admin/attendees/export": {
       get: {
         tags: ["Admin"],
-        summary: "Export the guest list as CSV",
+        summary: "Export the participant list as CSV",
+        description: "Takes the same filters as the list endpoint, so the CSV matches the table.",
         security: bearer,
-        parameters: [{ name: "event", in: "query", schema: str(), description: "Filter by event id." }],
+        parameters: [
+          { name: "event", in: "query", schema: str(), description: "Filter by event id." },
+          { name: "stack", in: "query", schema: str() },
+          { name: "status", in: "query", schema: str() },
+          { name: "registrationStatus", in: "query", schema: str() },
+          { name: "plusOne", in: "query", schema: str({ enum: ["none", "has"] }) },
+          { name: "q", in: "query", schema: str(), description: "Name / email / phone search." },
+        ],
+        responses: {
+          200: { description: "text/csv participant list", content: { "text/csv": { schema: str() } } },
+          401: errorResponse("Not an admin token"),
+        },
+      },
+    },
+    "/api/admin/guests/export": {
+      get: {
+        tags: ["Admin"],
+        summary: "Export the guest list as CSV",
+        description: "Takes the same filters as the list endpoint, so the CSV matches the table.",
+        security: bearer,
+        parameters: [
+          { name: "event", in: "query", schema: str(), description: "Filter by event id." },
+          { name: "type", in: "query", schema: str(), description: "Filter by guest type." },
+          { name: "q", in: "query", schema: str(), description: "Name / email search." },
+        ],
         responses: {
           200: { description: "text/csv guest list", content: { "text/csv": { schema: str() } } },
+          401: errorResponse("Not an admin token"),
+        },
+      },
+    },
+    "/api/admin/tickets/export": {
+      get: {
+        tags: ["Admin"],
+        summary: "Export the ticket list as CSV",
+        description: "Takes the same filters as the list endpoint, so the CSV matches the table.",
+        security: bearer,
+        parameters: [
+          { name: "event", in: "query", schema: str(), description: "Filter by event id." },
+          { name: "status", in: "query", schema: str(), description: "VALID / USED / REVOKED." },
+          { name: "q", in: "query", schema: str(), description: "Number / holder / event search." },
+        ],
+        responses: {
+          200: { description: "text/csv ticket list", content: { "text/csv": { schema: str() } } },
           401: errorResponse("Not an admin token"),
         },
       },

@@ -2,7 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { participantsService, downloadBlob, type ParticipantFilters } from "@/services/admin";
+import {
+  participantsService,
+  downloadBlob,
+  exportUrls,
+  type ParticipantFilters,
+} from "@/services/admin";
 import type {
   ParticipantCreateValues,
   ParticipantEditValues,
@@ -116,13 +121,10 @@ export function useAssignPlusOne() {
   });
 }
 
+/* downloads exactly the rows the table is showing — same filters, same search */
 export function useExportParticipants() {
   return useMutation({
-    mutationFn: (eventId?: string) =>
-      downloadBlob(
-        `/api/admin/attendees/export${eventId ? `?event=${eventId}` : ""}`,
-        `guests-${new Date().toISOString().slice(0, 10)}.csv`
-      ),
+    mutationFn: (filters: ParticipantFilters = {}) => downloadBlob(exportUrls.participants(filters)),
     onSuccess: () => toast.success("Export downloaded"),
     onError: (e) => toast.error(errorMessage(e)),
   });

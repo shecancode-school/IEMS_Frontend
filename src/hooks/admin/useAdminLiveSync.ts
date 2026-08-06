@@ -18,7 +18,7 @@ export function useAdminLiveSync() {
       qc.invalidateQueries({ queryKey: adminKeys.eventStats });
       qc.invalidateQueries({ queryKey: adminKeys.ticketsAll });
       qc.invalidateQueries({ queryKey: adminKeys.participantsAll });
-      qc.invalidateQueries({ queryKey: adminKeys.guests });
+      qc.invalidateQueries({ queryKey: adminKeys.guestsAll });
       /* per-event engagement (reminder pool, plus-one split) + the email report
          all move with headcounts and sends — refresh them live too. Prefix keys
          match every id/filter variant. */

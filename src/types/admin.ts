@@ -84,7 +84,13 @@ export type AdminEvent = {
 
 /* ------------------------------------------------------------ Participants */
 type EventRef = { id: string; name?: string; startTime?: string; status?: string } | null;
-type TicketRef = { code?: string; status: TicketStatus; scannedAt: string | null } | null;
+type TicketRef = {
+  code?: string;
+  number?: string;
+  status: TicketStatus;
+  sentAt?: string | null;
+  scannedAt: string | null;
+} | null;
 
 export type AdminParticipant = {
   id: string;
@@ -143,9 +149,10 @@ export type AdminGuest = {
   email: string;
   guestType: GuestType;
   invitedBy: string | null;
+  eventId: string | null;
   eventName: string | null;
   addedAt: string;
-  ticket: { code?: string; status: TicketStatus; scannedAt: string | null } | null;
+  ticket: TicketRef;
 };
 
 export type GuestProfile = {

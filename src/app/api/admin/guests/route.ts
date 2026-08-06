@@ -1,58 +1,20 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { Event, Guest, Participant, Ticket, GUEST_TYPES } from "@/models";
+import { Event, Guest, Participant, GUEST_TYPES } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { issueTicket, CapacityError } from "@/lib/tickets";
+import { guestFiltersFrom, listGuestRows } from "@/lib/guestList";
 import { notifyAdmins } from "@/lib/notify";
 import { ok, fail, unauthorized } from "@/lib/http";
 
+/* Admin: list guests, filterable by event / type / search. The same builder
+   backs the CSV export so both stay in step. */
 export async function GET(req: Request) {
   const admin = await requireAdmin(req);
   if (!admin) return unauthorized();
 
-  await dbConnect();
-  const guests = await Guest.find()
-    .sort({ createdAt: -1 })
-    .populate("event", "name")
-    .populate("inviter", "name");
-  const tickets = await Ticket.find({
-    holderType: "Guest",
-    holderId: { $in: guests.map((g) => g._id) },
-  });
-  const ticketByHolder = new Map(tickets.map((t) => [t.holderId.toString(), t]));
-
-  /* guests who already checked in live on as ticket holder snapshots */
-  const attended = await Ticket.find({ holderType: "Guest", "holder.name": { $exists: true } })
-    .sort({ scannedAt: -1 })
-    .populate("event", "name");
-
-  return ok({
-    guests: [
-      ...guests.map((g) => ({
-        id: g._id,
-        name: g.name,
-        email: g.email,
-        guestType: g.guestType,
-        invitedBy: (g.inviter as unknown as { name?: string } | null)?.name ?? null,
-        eventName: (g.event as unknown as { name?: string } | null)?.name ?? null,
-        addedAt: g.createdAt,
-        ticket: (() => {
-          const t = ticketByHolder.get(g._id.toString());
-          return t ? { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null } : null;
-        })(),
-      })),
-      ...attended.map((t) => ({
-        id: t._id,
-        name: t.holder!.name,
-        email: t.holder!.email,
-        guestType: t.holder!.label ?? "GENERAL",
-        invitedBy: null,
-        eventName: (t.event as unknown as { name?: string } | null)?.name ?? null,
-        addedAt: t.issuedAt,
-        ticket: { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null },
-      })),
-    ],
-  });
+  const filters = guestFiltersFrom(new URL(req.url).searchParams);
+  return ok({ guests: await listGuestRows(filters) });
 }
 
 const Body = z.object({

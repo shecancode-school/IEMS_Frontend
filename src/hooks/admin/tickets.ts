@@ -2,15 +2,38 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ticketsService } from "@/services/admin";
+import {
+  ticketsService,
+  downloadBlob,
+  exportUrls,
+  type TicketFilters,
+} from "@/services/admin";
 import { adminKeys } from "./keys";
 import { errorMessage } from "./util";
 
-export function useTickets(filters: { event?: string; status?: string } = {}) {
+export function useTickets(filters: TicketFilters = {}) {
   return useQuery({
     queryKey: adminKeys.tickets(filters),
     queryFn: () => ticketsService.list(filters).then((d) => d.tickets),
     staleTime: 10_000,
+  });
+}
+
+/* downloads exactly the rows the table is showing — same filters, same search */
+export function useExportTickets() {
+  return useMutation({
+    mutationFn: (filters: TicketFilters = {}) => downloadBlob(exportUrls.tickets(filters)),
+    onSuccess: () => toast.success("Export downloaded"),
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+}
+
+/* the printable PDF pass for a single ticket */
+export function useDownloadTicketPdf() {
+  return useMutation({
+    mutationFn: (id: string) => downloadBlob(`/api/tickets/${id}/download`),
+    onSuccess: () => toast.success("Pass downloaded"),
+    onError: (e) => toast.error(errorMessage(e)),
   });
 }
 
