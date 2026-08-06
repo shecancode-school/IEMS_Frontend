@@ -42,6 +42,8 @@ export function DataTable<T>({
   onRowClick,
   searchable,
   searchPlaceholder = "Search…",
+  searchValue,
+  onSearchChange,
   toolbar,
   pageSize = 10,
   empty,
@@ -52,11 +54,16 @@ export function DataTable<T>({
   onRowClick?: (row: T) => void;
   searchable?: (row: T) => string;
   searchPlaceholder?: string;
+  /** pass both to control the search box (persisted filters, exports) */
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
   toolbar?: ReactNode;
   pageSize?: number;
   empty?: ReactNode;
 }) {
-  const [query, setQuery] = useState("");
+  const [innerQuery, setInnerQuery] = useState("");
+  const query = searchValue ?? innerQuery;
+  const setQuery = onSearchChange ?? setInnerQuery;
   const [sort, setSort] = useState<Sort | null>(null);
   const [page, setPage] = useState(1);
 

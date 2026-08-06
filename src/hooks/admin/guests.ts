@@ -2,16 +2,25 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { guestsService } from "@/services/admin";
+import { guestsService, downloadBlob, exportUrls, type GuestFilters } from "@/services/admin";
 import type { GuestCreateValues, GuestEditValues } from "@/schemas/admin";
 import { adminKeys } from "./keys";
 import { errorMessage } from "./util";
 
-export function useGuests() {
+export function useGuests(filters: GuestFilters = {}) {
   return useQuery({
-    queryKey: adminKeys.guests,
-    queryFn: () => guestsService.list().then((d) => d.guests),
+    queryKey: adminKeys.guests(filters),
+    queryFn: () => guestsService.list(filters).then((d) => d.guests),
     staleTime: 10_000,
+  });
+}
+
+/* downloads exactly the rows the table is showing — same filters, same search */
+export function useExportGuests() {
+  return useMutation({
+    mutationFn: (filters: GuestFilters = {}) => downloadBlob(exportUrls.guests(filters)),
+    onSuccess: () => toast.success("Export downloaded"),
+    onError: (e) => toast.error(errorMessage(e)),
   });
 }
 
@@ -28,7 +37,7 @@ export function useCreateGuest() {
   return useMutation({
     mutationFn: (body: GuestCreateValues) => guestsService.create(body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.guests });
+      qc.invalidateQueries({ queryKey: adminKeys.guestsAll });
       toast.success("Guest added — ticket emailed");
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -41,7 +50,7 @@ export function useUpdateGuest() {
     mutationFn: (vars: { id: string; body: GuestEditValues }) =>
       guestsService.update(vars.id, vars.body),
     onSuccess: (_r, vars) => {
-      qc.invalidateQueries({ queryKey: adminKeys.guests });
+      qc.invalidateQueries({ queryKey: adminKeys.guestsAll });
       qc.invalidateQueries({ queryKey: adminKeys.guest(vars.id) });
       toast.success("Guest updated");
     },
@@ -54,7 +63,7 @@ export function useDeleteGuest() {
   return useMutation({
     mutationFn: (id: string) => guestsService.remove(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.guests });
+      qc.invalidateQueries({ queryKey: adminKeys.guestsAll });
       toast.success("Guest deleted");
     },
     onError: (e) => toast.error(errorMessage(e)),

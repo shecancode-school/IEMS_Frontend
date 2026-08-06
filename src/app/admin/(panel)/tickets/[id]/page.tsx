@@ -4,8 +4,13 @@
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Ban, QrCode, RotateCcw, Send, Trash2 } from "lucide-react";
-import { useTicket, useTicketAction, useRegenerateQr } from "@/hooks/admin/tickets";
+import { Ban, Download, QrCode, RotateCcw, Send, Trash2 } from "lucide-react";
+import {
+  useTicket,
+  useTicketAction,
+  useRegenerateQr,
+  useDownloadTicketPdf,
+} from "@/hooks/admin/tickets";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { ScanHistory } from "@/components/admin/ScanHistory";
@@ -20,6 +25,7 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const { data, isPending, error } = useTicket(id);
   const action = useTicketAction();
   const regenerate = useRegenerateQr();
+  const downloadPdf = useDownloadTicketPdf();
 
   if (isPending) return <TableSkeleton rows={4} cols={2} />;
   if (error || !data)
@@ -43,6 +49,14 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
         crumbs={[{ label: "Tickets", href: "/admin/tickets" }, { label: t.ticketNumber }]}
         actions={
           <>
+            <Button
+              variant="outline"
+              onClick={() => downloadPdf.mutate(id)}
+              disabled={downloadPdf.isPending}
+            >
+              <Download className="size-4" />
+              {downloadPdf.isPending ? "Preparing…" : "Download"}
+            </Button>
             <Button variant="outline" onClick={() => action.mutate({ id, action: "resend" })}>
               <Send className="size-4" />
               Resend

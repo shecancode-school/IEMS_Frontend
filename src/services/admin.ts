@@ -130,8 +130,11 @@ export const remindersService = {
 };
 
 /* ---------------------------------------------------------------- Guests */
+export type GuestFilters = { event?: string; type?: string; q?: string };
+
 export const guestsService = {
-  list: () => api<{ guests: AdminGuest[] }>("/api/admin/guests", { role: "admin" }),
+  list: (f: GuestFilters = {}) =>
+    api<{ guests: AdminGuest[] }>(`/api/admin/guests${qs(f)}`, { role: "admin" }),
   get: (id: string) => api<GuestProfile>(`/api/admin/guests/${id}`, { role: "admin" }),
   create: (body: GuestCreateValues) =>
     api<{ guest: { id: string; name: string; ticketCode?: string } }>("/api/admin/guests", {
@@ -149,8 +152,10 @@ export const guestsService = {
 };
 
 /* --------------------------------------------------------------- Tickets */
+export type TicketFilters = { event?: string; status?: string; q?: string };
+
 export const ticketsService = {
-  list: (f: { event?: string; status?: string } = {}) =>
+  list: (f: TicketFilters = {}) =>
     api<{ tickets: AdminTicket[] }>(`/api/admin/tickets${qs(f)}`, { role: "admin" }),
   get: (id: string) =>
     api<{ ticket: AdminTicket; history: { at: string; result: string; scanner: string | null }[] }>(
@@ -229,14 +234,33 @@ export const emailsService = {
     api<SendPassResult>("/api/admin/emails/send", { role: "admin", body: { participantIds } }),
 };
 
+/* Export endpoints take exactly the filters the matching list view has active,
+   so a download is always "what I'm looking at". */
+export const exportUrls = {
+  participants: (f: ParticipantFilters = {}) => `/api/admin/attendees/export${qs(f)}`,
+  guests: (f: GuestFilters = {}) => `/api/admin/guests/export${qs(f)}`,
+  tickets: (f: TicketFilters = {}) => `/api/admin/tickets/export${qs(f)}`,
+};
+
 /* Raw binary download (CSV/PDF) — the JSON api() helper can't stream blobs, so
-   we fetch with the admin bearer token and hand back a Blob. */
-export async function downloadBlob(path: string, filename: string): Promise<void> {
+   we fetch with the admin bearer token and save the response as a file. When no
+   filename is given the server's Content-Disposition wins. */
+export async function downloadBlob(path: string, filename?: string): Promise<void> {
   const token = bridgeGetToken("admin");
   const res = await fetch(path, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("Download failed");
+  if (!res.ok) {
+    const message = await res
+      .json()
+      .then((d) => (d as { error?: string }).error)
+      .catch(() => null);
+    throw new Error(message || "Download failed");
+  }
+  const suggested = /filename="?([^"]+)"?/.exec(
+    res.headers.get("content-disposition") ?? ""
+  )?.[1];
+  filename = filename ?? suggested ?? "export.csv";
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

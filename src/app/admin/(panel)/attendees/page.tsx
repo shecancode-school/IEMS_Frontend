@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Download, MoreHorizontal, Check, X, Eye, Trash2, UserPlus, Users } from "lucide-react";
 import {
   useParticipants,
@@ -10,6 +10,7 @@ import {
   useDeleteParticipant,
   useExportParticipants,
 } from "@/hooks/admin/participants";
+import { useStickyFilters } from "@/hooks/admin/useStickyFilters";
 import {
   PARTICIPANT_STATUSES,
   REGISTRATION_STATUSES,
@@ -51,21 +52,24 @@ const initials = (name: string) =>
 
 function ParticipantsInner() {
   const router = useRouter();
-  const params = useSearchParams();
-  const [event, setEvent] = useState(params.get("event") ?? "all");
-  const [registration, setRegistration] = useState("all");
-  const [status, setStatus] = useState("all");
-  const [stack, setStack] = useState("all");
-  const [plusOne, setPlusOne] = useState("all");
-
-  const filters = {
-    event: event === "all" ? undefined : event,
-    registrationStatus: registration === "all" ? undefined : registration,
-    status: status === "all" ? undefined : status,
-    stack: stack === "all" ? undefined : stack,
-    plusOne: plusOne === "all" ? undefined : plusOne,
+  /* filters live in the URL + sessionStorage, so leaving for a participant
+     profile and coming back lands on the same selection */
+  const { filters, setFilter, isFiltered } = useStickyFilters("participants", {
+    event: "all",
+    registration: "all",
+    status: "all",
+    stack: "all",
+    plusOne: "all",
+    q: "",
+  });
+  const query = {
+    event: filters.event === "all" ? undefined : filters.event,
+    registrationStatus: filters.registration === "all" ? undefined : filters.registration,
+    status: filters.status === "all" ? undefined : filters.status,
+    stack: filters.stack === "all" ? undefined : filters.stack,
+    plusOne: filters.plusOne === "all" ? undefined : filters.plusOne,
   };
-  const { data, isPending, error, refetch } = useParticipants(filters);
+  const { data, isPending, error, refetch } = useParticipants(query);
   const setReg = useSetRegistrationStatus();
   const del = useDeleteParticipant();
   const exportCsv = useExportParticipants();
@@ -197,8 +201,8 @@ function ParticipantsInner() {
           <>
             <Button
               variant="outline"
-              onClick={() => exportCsv.mutate(event === "all" ? undefined : event)}
-              disabled={exportCsv.isPending}
+              onClick={() => exportCsv.mutate({ ...query, q: filters.q || undefined })}
+              disabled={exportCsv.isPending || (data ?? []).length === 0}
             >
               <Download className="size-4" />
               Export CSV
@@ -217,7 +221,7 @@ function ParticipantsInner() {
         <TableSkeleton cols={7} />
       ) : error ? (
         <ErrorState message={error.message} onRetry={() => refetch()} />
-      ) : (data ?? []).length === 0 ? (
+      ) : (data ?? []).length === 0 && !isFiltered ? (
         <EmptyState
           icon={<Users className="size-5" />}
           title="No participants"
@@ -239,16 +243,21 @@ function ParticipantsInner() {
           onRowClick={(p) => p.registrationStatus && router.push(`/admin/attendees/${p.id}`)}
           searchable={(p) => `${p.name} ${p.email} ${p.phone ?? ""}`}
           searchPlaceholder="Search participants…"
+          searchValue={filters.q}
+          onSearchChange={(v) => setFilter("q", v)}
           pageSize={12}
           toolbar={
             <>
               <EventPicker
-                value={event}
-                onValueChange={setEvent}
+                value={filters.event}
+                onValueChange={(v) => setFilter("event", v)}
                 includeAll
                 className="h-9 w-42.5"
               />
-              <Select value={registration} onValueChange={setRegistration}>
+              <Select
+                value={filters.registration}
+                onValueChange={(v) => setFilter("registration", v)}
+              >
                 <SelectTrigger className="h-9 w-37.5">
                   <SelectValue placeholder="Registration" />
                 </SelectTrigger>
@@ -261,7 +270,7 @@ function ParticipantsInner() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={status} onValueChange={setStatus}>
+              <Select value={filters.status} onValueChange={(v) => setFilter("status", v)}>
                 <SelectTrigger className="h-9 w-35">
                   <SelectValue placeholder="Verification" />
                 </SelectTrigger>
@@ -274,7 +283,7 @@ function ParticipantsInner() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={stack} onValueChange={setStack}>
+              <Select value={filters.stack} onValueChange={(v) => setFilter("stack", v)}>
                 <SelectTrigger className="h-9 w-32.5">
                   <SelectValue placeholder="Stack" />
                 </SelectTrigger>
@@ -287,7 +296,7 @@ function ParticipantsInner() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={plusOne} onValueChange={setPlusOne}>
+              <Select value={filters.plusOne} onValueChange={(v) => setFilter("plusOne", v)}>
                 <SelectTrigger className="h-9 w-37.5">
                   <SelectValue placeholder="Plus-one" />
                 </SelectTrigger>

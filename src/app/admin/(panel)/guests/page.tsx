@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, MoreHorizontal, Pencil, Trash2, UserPlus } from "lucide-react";
-import { useGuests, useDeleteGuest } from "@/hooks/admin/guests";
+import { Download, Eye, MoreHorizontal, Pencil, Trash2, UserPlus } from "lucide-react";
+import { useGuests, useDeleteGuest, useExportGuests } from "@/hooks/admin/guests";
+import { useStickyFilters } from "@/hooks/admin/useStickyFilters";
 import { GUEST_TYPES, type AdminGuest } from "@/types/admin";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { DataTable, type Column } from "@/components/admin/DataTable";
+import { EventPicker } from "@/components/admin/EventPicker";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/admin/states";
@@ -30,13 +32,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export default function GuestsPage() {
+function GuestsInner() {
   const router = useRouter();
-  const { data, isPending, error, refetch } = useGuests();
+  /* filters live in the URL + sessionStorage, so leaving for a guest profile
+     and coming back lands on the same selection */
+  const { filters, setFilter, isFiltered } = useStickyFilters("guests", {
+    event: "all",
+    type: "all",
+    q: "",
+  });
+  const query = {
+    event: filters.event === "all" ? undefined : filters.event,
+    type: filters.type === "all" ? undefined : filters.type,
+  };
+  const { data, isPending, error, refetch } = useGuests(query);
   const del = useDeleteGuest();
-  const [type, setType] = useState("all");
-
-  const rows = (data ?? []).filter((g) => type === "all" || g.guestType === type);
+  const exportCsv = useExportGuests();
 
   const columns: Column<AdminGuest>[] = [
     {
@@ -147,12 +158,22 @@ export default function GuestsPage() {
         title="Guests"
         description="VIPs, speakers, sponsors and plus-ones — ticketed on the spot."
         actions={
-          <Button asChild>
-            <Link href="/admin/guests/new">
-              <UserPlus className="size-4" />
-              Add guest
-            </Link>
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => exportCsv.mutate({ ...query, q: filters.q || undefined })}
+              disabled={exportCsv.isPending || (data ?? []).length === 0}
+            >
+              <Download className="size-4" />
+              Export CSV
+            </Button>
+            <Button asChild>
+              <Link href="/admin/guests/new">
+                <UserPlus className="size-4" />
+                Add guest
+              </Link>
+            </Button>
+          </>
         }
       />
 
@@ -160,7 +181,7 @@ export default function GuestsPage() {
         <TableSkeleton cols={6} />
       ) : error ? (
         <ErrorState message={error.message} onRetry={() => refetch()} />
-      ) : (data ?? []).length === 0 ? (
+      ) : (data ?? []).length === 0 && !isFiltered ? (
         <EmptyState
           icon={<UserPlus className="size-5" />}
           title="No guests yet"
@@ -176,29 +197,47 @@ export default function GuestsPage() {
         />
       ) : (
         <DataTable
-          data={rows}
+          data={data ?? []}
           columns={columns}
           getRowId={(g) => g.id}
           onRowClick={(g) => router.push(`/admin/guests/${g.id}`)}
           searchable={(g) => `${g.name} ${g.email}`}
           searchPlaceholder="Search guests…"
+          searchValue={filters.q}
+          onSearchChange={(v) => setFilter("q", v)}
           toolbar={
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger className="h-9 w-[150px]">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {GUEST_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <EventPicker
+                value={filters.event}
+                onValueChange={(v) => setFilter("event", v)}
+                includeAll
+                className="h-9 w-42.5"
+              />
+              <Select value={filters.type} onValueChange={(v) => setFilter("type", v)}>
+                <SelectTrigger className="h-9 w-37.5">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  {GUEST_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
           }
         />
       )}
     </div>
+  );
+}
+
+export default function GuestsPage() {
+  return (
+    <Suspense fallback={<TableSkeleton cols={6} />}>
+      <GuestsInner />
+    </Suspense>
   );
 }

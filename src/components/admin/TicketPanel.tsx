@@ -1,5 +1,9 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import { Download } from "lucide-react";
+import { useDownloadTicketPdf } from "@/hooks/admin/tickets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -16,6 +20,7 @@ type TicketLike = {
 /* The pass panel shown on participant/guest detail: QR, ticket number, status
    and a link to the full ticket record. */
 export function TicketPanel({ ticket }: { ticket: TicketLike | null }) {
+  const downloadPdf = useDownloadTicketPdf();
   return (
     <Card className="shadow-none">
       <CardHeader className="flex-row items-center justify-between">
@@ -41,6 +46,16 @@ export function TicketPanel({ ticket }: { ticket: TicketLike | null }) {
                 ? ` · Checked in ${new Date(ticket.scannedAt).toLocaleString()}`
                 : ""}
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => downloadPdf.mutate(ticket.id)}
+              disabled={downloadPdf.isPending}
+            >
+              <Download className="size-4" />
+              {downloadPdf.isPending ? "Preparing…" : "Download pass"}
+            </Button>
             <Button asChild variant="outline" size="sm" className="w-full">
               <Link href={`/admin/tickets/${ticket.id}`}>Manage ticket</Link>
             </Button>

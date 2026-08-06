@@ -1,4 +1,4 @@
-import type { ParticipantFilters } from "@/services/admin";
+import type { GuestFilters, ParticipantFilters, TicketFilters } from "@/services/admin";
 
 /* Central query-key registry so mutations invalidate consistently. */
 export const adminKeys = {
@@ -12,10 +12,11 @@ export const adminKeys = {
   participantsAll: ["admin", "participants"] as const,
   participant: (id: string) => ["admin", "participant", id] as const,
 
-  guests: ["admin", "guests"] as const,
+  guests: (f: GuestFilters = {}) => ["admin", "guests", f] as const,
+  guestsAll: ["admin", "guests"] as const,
   guest: (id: string) => ["admin", "guest", id] as const,
 
-  tickets: (f: { event?: string; status?: string } = {}) => ["admin", "tickets", f] as const,
+  tickets: (f: TicketFilters = {}) => ["admin", "tickets", f] as const,
   ticketsAll: ["admin", "tickets"] as const,
   ticket: (id: string) => ["admin", "ticket", id] as const,
 

@@ -1,133 +1,19 @@
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import {
-  Event,
-  GENDERS,
-  Guest,
-  PARTICIPANT_STATUSES,
-  Participant,
-  REGISTRATION_STATUSES,
-  STACKS,
-  Ticket,
-  type ParticipantDoc,
-  type ParticipantStatus,
-  type RegistrationStatus,
-  type Stack,
-} from "@/models";
+import { Event, GENDERS, Participant, STACKS } from "@/models";
 import { requireAdmin } from "@/lib/auth";
+import { listParticipantRows, participantFiltersFrom } from "@/lib/participantList";
 import { ok, fail, unauthorized } from "@/lib/http";
-import type { QueryFilter } from "mongoose";
 
-function pick<T extends string>(value: string | null, allowed: readonly T[]): T | undefined {
-  return allowed.includes(value as T) ? (value as T) : undefined;
-}
-
+/* Admin: list participants, filterable by event / stack / status /
+   registration / plus-one / search. The same builder backs the CSV export so
+   both stay in step. */
 export async function GET(req: Request) {
   const admin = await requireAdmin(req);
   if (!admin) return unauthorized();
 
-  const url = new URL(req.url);
-  const filter: QueryFilter<ParticipantDoc> = {};
-  const stack = pick<Stack>(url.searchParams.get("stack"), STACKS);
-  if (stack) filter.stack = stack;
-  const status = pick<ParticipantStatus>(url.searchParams.get("status"), PARTICIPANT_STATUSES);
-  if (status) filter.status = status;
-  const registrationStatus = pick<RegistrationStatus>(
-    url.searchParams.get("registrationStatus"),
-    REGISTRATION_STATUSES
-  );
-  if (registrationStatus) filter.registrationStatus = registrationStatus;
-  const eventId = url.searchParams.get("event");
-  if (eventId) filter.event = eventId;
-  const q = url.searchParams.get("q");
-  if (q) {
-    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    filter.$or = [{ name: rx }, { email: rx }, { phone: rx }];
-  }
-  /* "none" = participants who haven't invited a plus-one (the reminder pool),
-     "has" = those who have one. Resolved against the Guest.inviter back-link. */
-  const plusOne = pick(url.searchParams.get("plusOne"), ["none", "has"] as const);
-
-  await dbConnect();
-  if (plusOne) {
-    const guestFilter: Record<string, unknown> = { inviter: { $ne: null } };
-    if (eventId) guestFilter.event = eventId;
-    const inviterIds = await Guest.find(guestFilter).distinct("inviter");
-    filter._id = plusOne === "has" ? { $in: inviterIds } : { $nin: inviterIds };
-  }
-
-  const participants = await Participant.find(filter)
-    .sort({ createdAt: 1 })
-    .limit(500)
-    .populate("event", "name startTime status");
-  const tickets = await Ticket.find({
-    holderType: "Participant",
-    holderId: { $in: participants.map((p) => p._id) },
-  });
-  const ticketByHolder = new Map(tickets.map((t) => [t.holderId.toString(), t]));
-
-  type EventRef = { _id: unknown; name?: string; startTime?: Date; status?: string } | null;
-  const eventOf = (e: EventRef) =>
-    e ? { id: e._id, name: e.name, startTime: e.startTime, status: e.status } : null;
-
-  const live = participants.map((p) => ({
-    id: p._id,
-    type: "PARTICIPANT" as const,
-    name: p.name,
-    email: p.email,
-    phone: p.phone,
-    stack: p.stack,
-    gender: p.gender ?? null,
-    status: p.status,
-    registrationStatus: p.registrationStatus,
-    profilePicture: p.profilePicture ?? null,
-    event: eventOf(p.event as unknown as EventRef),
-    ticket: (() => {
-      const t = ticketByHolder.get(p._id.toString());
-      return t ? { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null } : null;
-    })(),
-  }));
-
-  /* checked-in participants live on as ticket holder snapshots — their
-     Participant record is deleted at the gate so they can register elsewhere */
-  const holderFilter: Record<string, unknown> = {
-    holderType: "Participant",
-    "holder.name": { $exists: true },
-  };
-  if (eventId) holderFilter.event = eventId;
-  if (q) {
-    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    holderFilter.$or = [{ "holder.name": rx }, { "holder.email": rx }];
-  }
-  /* an archived holder is by definition COMPLETE. The plus-one filter works off
-     the live Guest link, which checked-in snapshots no longer have — so skip
-     them entirely when it's active. */
-  const attended =
-    plusOne || (status && status !== "COMPLETE")
-      ? []
-      : await Ticket.find(holderFilter)
-          .sort({ scannedAt: -1 })
-          .limit(500)
-          .populate("event", "name startTime status");
-
-  const archived = attended.map((t) => {
-    const h = t.holder!;
-    return {
-      id: t._id,
-      type: "PARTICIPANT" as const,
-      name: h.name,
-      email: h.email,
-      phone: h.phone ?? undefined,
-      stack: h.label ?? null,
-      gender: null,
-      status: "COMPLETE",
-      profilePicture: h.photoUrl ?? null,
-      event: eventOf(t.event as unknown as EventRef),
-      ticket: { code: t.code, status: t.status, scannedAt: t.scannedAt ?? null },
-    };
-  });
-
-  return ok({ attendees: [...live, ...archived] });
+  const filters = participantFiltersFrom(new URL(req.url).searchParams);
+  return ok({ attendees: await listParticipantRows(filters) });
 }
 
 const CreateBody = z.object({
