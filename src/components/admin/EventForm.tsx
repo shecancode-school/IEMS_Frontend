@@ -1,12 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ComponentProps, type ElementType, type ReactNode } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   CalendarDays,
+  CircleDot,
+  Clock,
   Link2,
   MapPin,
+  MapPinned,
   Users,
   Video,
   UserRound,
@@ -14,7 +17,11 @@ import {
   Ticket,
   FileText,
   Image as ImageIcon,
+  Info,
   Settings2,
+  Shapes,
+  Tag,
+  Type,
   CheckCircle2,
   Plus,
   Trash2,
@@ -113,6 +120,45 @@ const CONTROL = cn(
 );
 
 const ICON_CONTROL = cn(CONTROL, "pl-10");
+
+/* Native date, time and number inputs draw their own controls — a calendar
+   glyph, a clock, a pair of spinners — always on the right, in the browser's
+   own styling, and impossible to bring in line with the rest of the form. They
+   are switched off here and replaced with affordances this form owns. */
+const NATIVE_PICKER_OFF =
+  "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden";
+const NATIVE_SPINNER_OFF =
+  "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+
+/* One input, one icon, one implementation.
+
+   Five fields each carried their own copy of the relative-wrapper-plus-
+   absolutely-positioned-icon markup, which is precisely how the date pair came
+   to have the 40px of icon padding and no icon in it: the pattern lived in five
+   places, and drifted in one. */
+function FieldInput({
+  icon: Icon,
+  className,
+  ...props
+}: ComponentProps<typeof Input> & { icon: ElementType }) {
+  return (
+    <div className="relative">
+      <Icon
+        aria-hidden
+        className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input className={cn(ICON_CONTROL, className)} {...props} />
+    </div>
+  );
+}
+
+/* The leading icon inside a Select trigger. Every control on this form now
+   opens with one, so the eye can run down a column of fields and find the
+   values in the same place each time instead of stepping around the four that
+   happened to have an icon and the four that did not. */
+function TriggerIcon({ icon: Icon }: { icon: ElementType }) {
+  return <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Section                                                                   */
@@ -218,6 +264,8 @@ function DateTimeField({
   minDate?: string;
   invalid?: boolean;
 }) {
+  const dateRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
   const [date = "", time = ""] = (value || "").split("T");
 
   const commit = (nextDate: string, nextTime: string) => {
@@ -230,38 +278,76 @@ function DateTimeField({
     onChange(`${nextDate}T${nextTime || "09:00"}`);
   };
 
-  /* No leading icon on either of these, unlike every other field on the form.
+  /* The icon is the picker.
 
-     A native date input already draws a calendar indicator and a time input a
-     clock, both supplied by the browser and both on the right — adding our own
-     on the left put two of the same symbol in one 200px control. Dropping the
-     icon means dropping ICON_CONTROL's pl-10 with it: left behind on its own it
-     was 40px of reserved space with nothing in it, which is what pushed the
-     date field's text out of line with the time field beside it. Both now use
-     the same CONTROL as every other input, so all four boxes on the Starts /
-     Ends rows share one height, one padding and one baseline. */
+     A native date input already draws a calendar glyph and a time input a
+     clock — both on the right, both in the browser's own styling. Putting our
+     own on the left as well printed the same symbol twice in one 200px
+     control. So the native ones are hidden and ours takes over their job: it
+     is a real button that calls showPicker(), which keeps the affordance,
+     moves it into line with every other field on the form, and leaves typing
+     into the input untouched.
+
+     showPicker() is guarded rather than feature-detected. It throws on a
+     browser that does not have it and on a call the browser does not consider
+     user-initiated, and in both cases the answer is the same — the field is
+     still a working date input you can type into. */
+  const openPicker = (input: HTMLInputElement | null) => {
+    try {
+      input?.showPicker();
+    } catch {
+      input?.focus();
+    }
+  };
+
   return (
     <div className="grid gap-3 sm:grid-cols-[1.35fr_1fr]">
-      <Input
-        type="date"
-        aria-label={`${label} date`}
-        aria-invalid={invalid}
-        className={CONTROL}
-        value={date}
-        min={minDate}
-        onBlur={onBlur}
-        onChange={(event) => commit(event.target.value, time)}
-      />
+      <div className="relative">
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`Choose ${label.toLowerCase()} date`}
+          onClick={() => openPicker(dateRef.current)}
+          className="absolute left-0 top-0 z-10 flex h-full w-10 items-center justify-center rounded-l-xl text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <CalendarDays className="size-4" />
+        </button>
 
-      <Input
-        type="time"
-        aria-label={`${label} time`}
-        aria-invalid={invalid}
-        className={CONTROL}
-        value={time}
-        onBlur={onBlur}
-        onChange={(event) => commit(date, event.target.value)}
-      />
+        <Input
+          ref={dateRef}
+          type="date"
+          aria-label={`${label} date`}
+          aria-invalid={invalid}
+          className={cn(ICON_CONTROL, NATIVE_PICKER_OFF)}
+          value={date}
+          min={minDate}
+          onBlur={onBlur}
+          onChange={(event) => commit(event.target.value, time)}
+        />
+      </div>
+
+      <div className="relative">
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`Choose ${label.toLowerCase()} time`}
+          onClick={() => openPicker(timeRef.current)}
+          className="absolute left-0 top-0 z-10 flex h-full w-10 items-center justify-center rounded-l-xl text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Clock className="size-4" />
+        </button>
+
+        <Input
+          ref={timeRef}
+          type="time"
+          aria-label={`${label} time`}
+          aria-invalid={invalid}
+          className={cn(ICON_CONTROL, NATIVE_PICKER_OFF)}
+          value={time}
+          onBlur={onBlur}
+          onChange={(event) => commit(date, event.target.value)}
+        />
+      </div>
     </div>
   );
 }
@@ -389,7 +475,7 @@ export function EventForm({
           <Section
             title="Basics"
             description="Give your event a clear identity and classify it for attendees."
-            icon={FileText}
+            icon={Info}
             cols={2}
           >
             <FormField
@@ -400,9 +486,13 @@ export function EventForm({
                   <FieldLabel>Event name</FieldLabel>
 
                   <FormControl>
-                    <Input
+                    <FieldInput
+                      icon={Type}
                       placeholder="Women in Tech Night"
-                      className={cn(CONTROL, "h-12 text-base")}
+                      /* still the tallest control on the form — the size
+                         carries the hierarchy, the icon carries the alignment */
+                      className="h-12 text-base"
+                      autoComplete="off"
                       {...field}
                     />
                   </FormControl>
@@ -463,7 +553,10 @@ export function EventForm({
                   >
                     <FormControl>
                       <SelectTrigger className={cn("w-full", CONTROL)}>
-                        <SelectValue placeholder="Select category" />
+                        <div className="flex items-center gap-2">
+                          <TriggerIcon icon={Tag} />
+                          <SelectValue placeholder="Select category" />
+                        </div>
                       </SelectTrigger>
                     </FormControl>
 
@@ -494,7 +587,10 @@ export function EventForm({
                   >
                     <FormControl>
                       <SelectTrigger className={cn("w-full", CONTROL)}>
-                        <SelectValue placeholder="Select type" />
+                        <div className="flex items-center gap-2">
+                          <TriggerIcon icon={Shapes} />
+                          <SelectValue placeholder="Select type" />
+                        </div>
                       </SelectTrigger>
                     </FormControl>
 
@@ -526,7 +622,10 @@ export function EventForm({
                     >
                       <FormControl>
                         <SelectTrigger className={cn("w-full", CONTROL)}>
-                          <SelectValue placeholder="Select status" />
+                          <div className="flex items-center gap-2">
+                            <TriggerIcon icon={CircleDot} />
+                            <SelectValue placeholder="Select status" />
+                          </div>
                         </SelectTrigger>
                       </FormControl>
 
@@ -614,7 +713,7 @@ export function EventForm({
           <Section
             title="Location & attendance"
             description="Configure where the event happens, how attendees join, and who is responsible for hosting it."
-            icon={MapPin}
+            icon={MapPinned}
             cols={2}
           >
             <FormField
@@ -625,15 +724,12 @@ export function EventForm({
                   <FieldLabel>Location</FieldLabel>
 
                   <FormControl>
-                    <div className="relative">
-                      <MapPin className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                      <Input
-                        placeholder="Main Hall, Kigali"
-                        className={ICON_CONTROL}
-                        {...field}
-                      />
-                    </div>
+                    <FieldInput
+                      icon={MapPin}
+                      placeholder="Main Hall, Kigali"
+                      autoComplete="off"
+                      {...field}
+                    />
                   </FormControl>
 
                   <FormMessage />
@@ -654,9 +750,11 @@ export function EventForm({
                   >
                     <FormControl>
                       <SelectTrigger className={cn("w-full", CONTROL)}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-muted-foreground">
                           <AttendanceModeIcon mode={attendanceMode} />
-                          <SelectValue placeholder="Select attendance mode" />
+                          <span className="text-foreground">
+                            <SelectValue placeholder="Select attendance mode" />
+                          </span>
                         </div>
                       </SelectTrigger>
                     </FormControl>
@@ -711,7 +809,7 @@ export function EventForm({
                     <FormControl>
                       <SelectTrigger className={cn("w-full", CONTROL)}>
                         <div className="flex items-center gap-2">
-                          <UserRound className="size-4 text-muted-foreground" />
+                          <TriggerIcon icon={UserRound} />
                           <SelectValue placeholder="Nobody in particular" />
                         </div>
                       </SelectTrigger>
@@ -751,14 +849,12 @@ export function EventForm({
                   <FieldLabel>Organiser</FieldLabel>
 
                   <FormControl>
-                    <div className="relative">
-                      <Building2 className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                      <Input
-                        className={ICON_CONTROL}
-                        {...field}
-                      />
-                    </div>
+                    <FieldInput
+                      icon={Building2}
+                      placeholder="Igire Rwanda Organization"
+                      autoComplete="organization"
+                      {...field}
+                    />
                   </FormControl>
 
                   <FormMessage />
@@ -774,22 +870,23 @@ export function EventForm({
                   <FieldLabel>Capacity</FieldLabel>
 
                   <FormControl>
-                    <div className="relative">
-                      <Users className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                      <Input
-                        type="number"
-                        min={0}
-                        className={ICON_CONTROL}
-                        name={field.name}
-                        ref={field.ref}
-                        onBlur={field.onBlur}
-                        value={String(field.value ?? "")}
-                        onChange={(event) =>
-                          field.onChange(event.target.value)
-                        }
-                      />
-                    </div>
+                    <FieldInput
+                      icon={Users}
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      className={NATIVE_SPINNER_OFF}
+                      /* A number input changes its value on a scroll wheel
+                         while focused. On a form this long that turns an
+                         ordinary scroll past the field into a silent edit of
+                         the event's capacity, so focus is dropped instead. */
+                      onWheel={(event) => event.currentTarget.blur()}
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      value={String(field.value ?? "")}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    />
                   </FormControl>
 
                   <FormDescription>
@@ -809,15 +906,7 @@ export function EventForm({
                   <FieldLabel>Price</FieldLabel>
 
                   <FormControl>
-                    <div className="relative">
-                      <Ticket className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                      <Input
-                        placeholder="Free"
-                        className={ICON_CONTROL}
-                        {...field}
-                      />
-                    </div>
+                    <FieldInput icon={Ticket} placeholder="Free" {...field} />
                   </FormControl>
 
                   <FormMessage />
