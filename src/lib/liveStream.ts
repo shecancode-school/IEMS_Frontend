@@ -132,16 +132,35 @@ export function subscribeLiveStatus(
 }
 
 /* Public counterpart for the landing page: one connection shared by Nav,
-   Hero and the calendar; fires whenever event content changes. */
-const publicListeners = new Set<() => void>();
+   Hero, the public calendar and the admin calendar; fires whenever event or
+   calendar content changes.
+
+   The frame carries a scope and nothing else, so a listener can refetch only
+   what it cares about. It is handed to the callback rather than being filtered
+   here, because "events" matters to the landing page and "calendar" matters to
+   the console, and one shared socket should serve both. A malformed frame
+   still notifies with no scope, which errs towards refetching — a wasted
+   request is cheaper than a board that quietly stops updating. */
+export type ContentScope = "events" | "calendar";
+
+type FeedListener = (scope: ContentScope | null) => void;
+
+const publicListeners = new Set<FeedListener>();
 let publicSource: EventSource | null = null;
 
-export function subscribeEventsFeed(onChange: () => void): () => void {
+export function subscribeEventsFeed(onChange: FeedListener): () => void {
   publicListeners.add(onChange);
   if (!publicSource) {
     publicSource = new EventSource("/api/events/stream");
-    publicSource.onmessage = () => {
-      for (const listener of publicListeners) listener();
+    publicSource.onmessage = (msg) => {
+      let scope: ContentScope | null = null;
+      try {
+        const parsed = JSON.parse(msg.data) as { scope?: string };
+        if (parsed.scope === "events" || parsed.scope === "calendar") scope = parsed.scope;
+      } catch {
+        /* malformed frame — notify anyway, see above */
+      }
+      for (const listener of publicListeners) listener(scope);
     };
   }
   return () => {

@@ -4,6 +4,7 @@ import { Guest, Participant, Ticket, TICKET_STATUSES, type TicketStatus } from "
 import { requireAdmin } from "@/lib/auth";
 import { buildTicketView, buildTicketViews, issueTicket, CapacityError, type Holder } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 import type { QueryFilter } from "mongoose";
 import type { TicketDoc } from "@/models";
 
@@ -58,6 +59,13 @@ export async function POST(req: Request) {
 
   try {
     const ticket = await issueTicket(holder, { email: parsed.data.email });
+    await recordAudit({
+      actorId: admin.id,
+      req,
+      action: "ticket.create",
+      target: { type: "ticket", id: ticket._id.toString(), label: ticket.ticketNumber },
+      summary: `Issued pass ${ticket.ticketNumber}`,
+    });
     return ok({ ticket: await buildTicketView(ticket, { qr: true }) }, 201);
   } catch (err) {
     if (err instanceof CapacityError) return fail(err.message, 409);

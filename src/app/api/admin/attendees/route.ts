@@ -4,6 +4,7 @@ import { Event, GENDERS, Participant, STACKS } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { listParticipantRows, participantFiltersFrom } from "@/lib/participantList";
 import { ok, fail, unauthorized } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin: list participants, filterable by event / stack / status /
    registration / plus-one / search. The same builder backs the CSV export so
@@ -48,6 +49,13 @@ export async function POST(req: Request) {
       gender: parsed.data.gender ?? null,
       status: "PENDING",
       registrationStatus: "APPROVED",
+    });
+    await recordAudit({
+      actorId: admin.id,
+      req,
+      action: "attendee.create",
+      target: { type: "participant", id: p._id.toString(), label: p.name },
+      summary: `Registered ${p.name} <${p.email}> for an event`,
     });
     return ok({ participant: { id: p._id, name: p.name, email: p.email } }, 201);
   } catch (err: unknown) {

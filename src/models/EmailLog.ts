@@ -11,6 +11,9 @@ export const EMAIL_KINDS = [
   "PROGRESS_REMINDER", // daily status-aware nudge: verify / finish / invite a plus-one
   "PLUS_ONE_REVOKED", // a participant's plus-one was removed by an admin
   "UPDATE", // admin broadcast about an event
+  "BOOKING_CONFIRMED", // a 1:1 slot was booked — sent to the requester
+  "BOOKING_HOST_NOTICE", // the same booking — sent to the staff member
+  "BOOKING_CANCELLED", // a 1:1 slot was cancelled by either side
 ] as const;
 export type EmailKind = (typeof EMAIL_KINDS)[number];
 
@@ -23,6 +26,7 @@ export type EmailStatus = (typeof EMAIL_STATUSES)[number];
 export interface EmailLogDoc {
   _id: Types.ObjectId;
   kind: EmailKind;
+  from?: string;
   to: string;
   subject: string;
   /** the rendered body as delivered — attachments (QR/PDF) are not stored */
@@ -36,6 +40,8 @@ export interface EmailLogDoc {
 const EmailLogSchema = new Schema<EmailLogDoc>(
   {
     kind: { type: String, enum: EMAIL_KINDS, required: true },
+    /* the sending mailbox, so a delivery problem traces back to one account */
+    from: { type: String, default: "" },
     to: { type: String, required: true, lowercase: true, trim: true },
     subject: { type: String, required: true },
     html: { type: String, default: "" },

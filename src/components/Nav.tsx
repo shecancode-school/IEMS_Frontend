@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 // import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { CATEGORY_COLORS, nextEvent } from "@/lib/events";
+import { CATEGORY_COLORS, isBookableEvent, nextEvent } from "@/lib/events";
 import { useEvents } from "@/lib/useEvents";
 import { useEventFlow } from "@/components/EventFlow";
 
@@ -162,13 +162,25 @@ export default function Nav() {
             </span>
           </span>
         )}
-        {upNext && (
-          <button
-            type="button"
-            onClick={() => openEvent(upNext)}
+        {upNext && (() => {
+          /* A ticketed event opens the registration flow. A session has no
+             ticket, so its chip points at the calendar instead — offering
+             "register" for a class would promise something that does not
+             exist. Same chip, different promise. */
+          const bookable = isBookableEvent(upNext);
+          const ChipTag = bookable ? "button" : "a";
+          return (
+          <ChipTag
+            {...(bookable
+              ? { type: "button" as const, onClick: () => openEvent(upNext) }
+              : { href: "#calendar" })}
             className="flex cursor-pointer items-center gap-2.5 text-left"
             title={`${upNext.title} — ${upNext.time}, ${upNext.space}`}
-            aria-label={`Next event: ${upNext.title}, ${upNext.time}`}
+            aria-label={
+              bookable
+                ? `Next event: ${upNext.title}, ${upNext.time}`
+                : `Next on the calendar: ${upNext.title}, ${upNext.time} — see the calendar`
+            }
           >
             <span className="flex h-10 w-10 flex-col overflow-hidden rounded-md border border-line">
               <span className="label bg-orange text-center text-[8px] font-bold leading-3.5 text-bg">
@@ -192,8 +204,9 @@ export default function Nav() {
                 · {upNext.time}
               </span>
             </span>
-          </button>
-        )}
+          </ChipTag>
+          );
+        })()}
 
         {/* <Link
           href="/verify"
@@ -201,6 +214,15 @@ export default function Nav() {
         >
           Get your ticket
         </Link> */}
+
+        {/* Booking had no entry point anywhere on the public site — /book was
+            reachable only by typing the URL. */}
+        <a
+          href="#book"
+          className="label hidden text-xs font-semibold text-cream transition-colors hover:text-orange md:block"
+        >
+          Book a conversation
+        </a>
 
         <a
           href="#calendar"

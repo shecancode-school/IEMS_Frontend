@@ -112,9 +112,9 @@ export default function EventsPage() {
     <div>
       <PageHeader
         title="Events"
-        description="Create and manage every event — tickets expire when an event ends."
+        description="Create and manage every event tickets expire when an event ends."
         actions={
-          <Button asChild>
+          <Button asChild className="cursor-pointer">
             <Link href="/admin/events/new">
               <CalendarPlus className="size-4" />
               New event

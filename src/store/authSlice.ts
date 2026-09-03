@@ -1,14 +1,14 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-/* The three sign-in domains. Each maps to a backend token kind:
-   participant→attendee, admin→admin, scanner→scanner. */
-export type Role = "participant" | "admin" | "scanner";
+/* The two sign-in domains. Standalone gate-scanner accounts were retired when
+   sign-in became Google-only — scanning is now a duty granted to a staff
+   account, so a scanner signs in as themselves. */
+export type Role = "participant" | "admin";
 
 /* backend token-kind names, used by the request layer */
-export const TOKEN_KIND: Record<Role, "attendee" | "admin" | "scanner"> = {
+export const TOKEN_KIND: Record<Role, "attendee" | "admin"> = {
   participant: "attendee",
   admin: "admin",
-  scanner: "scanner",
 };
 
 /* a normalized identity snapshot — only the fields the UI needs per role */
@@ -16,11 +16,24 @@ export interface RoleUser {
   id?: string;
   name?: string;
   email?: string;
-  /* admin role (single ADMIN role) */
+  /* staff role: ADMIN | CEO | FACILITATOR | ACADEMIC | STAFF */
   role?: string;
   /* participant: PENDING | VERIFIED | COMPLETE */
   status?: string;
+  /* staff: explicit grant to operate the gate scanner */
+  canScan?: boolean;
+  /* Google profile picture, refreshed at each sign-in */
+  photoUrl?: string | null;
+  /* staff: profile title shown on the org calendar and booking pages */
+  title?: string | null;
 }
+
+/* Staff sessions live in httpOnly cookies, so the browser genuinely has no
+   token to hold. This sentinel stands in for one, purely so the many
+   `!!session.token` checks across the UI keep meaning "signed in" without
+   every consumer having to learn which roles are cookie-backed. It is never
+   sent anywhere — the cookie is. */
+export const COOKIE_SESSION = "cookie";
 
 export type SessionStatus = "idle" | "authed" | "anon";
 
@@ -42,7 +55,6 @@ const initialState: AuthState = {
   sessions: {
     participant: emptySession(),
     admin: emptySession(),
-    scanner: emptySession(),
   },
 };
 

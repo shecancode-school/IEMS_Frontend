@@ -4,12 +4,16 @@ import { cn } from "@/lib/utils";
 /* Small status pill with a consistent colour language across the admin:
    green = good/live, amber = pending/attention, red = closed/revoked,
    zinc = neutral/draft. */
+/* Alpha tints rather than the 100/800 light-mode pairs these used to be. The
+   admin console renders inside `.admin-scope`, which is dark: a bg-green-100
+   pill with text-green-800 on it was a pale slab that read as disabled, and
+   every status in the console wore one. */
 const TONE: Record<string, string> = {
-  green: "border-transparent bg-green-100 text-green-800",
-  amber: "border-transparent bg-amber-100 text-amber-800",
-  red: "border-transparent bg-red-100 text-red-700",
-  blue: "border-transparent bg-sky-100 text-sky-800",
-  zinc: "border-transparent bg-stone-100 text-stone-600",
+  green: "border-transparent bg-emerald-500/15 text-emerald-300",
+  amber: "border-transparent bg-amber-500/15 text-amber-300",
+  red: "border-transparent bg-destructive/15 text-destructive",
+  blue: "border-transparent bg-sky-500/15 text-sky-300",
+  zinc: "border-transparent bg-muted text-muted-foreground",
 };
 
 const MAP: Record<string, keyof typeof TONE> = {

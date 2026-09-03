@@ -59,6 +59,9 @@ const KIND_LABEL: Record<EmailKind, string> = {
   PROGRESS_REMINDER: "Progress reminder",
   PLUS_ONE_REVOKED: "Plus-one removed",
   UPDATE: "Event update",
+  BOOKING_CONFIRMED: "Booking confirmed",
+  BOOKING_HOST_NOTICE: "New booking (host)",
+  BOOKING_CANCELLED: "Booking cancelled",
 };
 
 const when = (iso: string) =>

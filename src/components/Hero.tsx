@@ -6,14 +6,19 @@ import Image from "next/image";
 import gsap from "gsap";
 import { CalendarDays, MapPin, Tag } from "lucide-react";
 import HeroCanvas from "./HeroCanvas";
+import { HeroEmptyCard } from "./HeroEmptyCard";
 import {
   CATEGORIES,
   CATEGORY_COLORS,
+  isBookableEvent,
+  itemCategoryLabel,
+  itemColor,
   nextEvent,
   todayIso,
   type VenueEvent,
 } from "@/lib/events";
 import { useEvents } from "@/lib/useEvents";
+import { useBookingHosts } from "@/hooks/booking";
 import { useEventFlow } from "@/components/EventFlow";
 import { toPlainText } from "@/components/RichText";
 
@@ -104,10 +109,13 @@ function FeaturedEventCard({
   onOpen: () => void;
 }) {
   const isToday = event.date === todayIso();
+  const bookable = isBookableEvent(event);
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={bookable ? onOpen : undefined}
+      /* a session card is informational; nothing opens */
+      aria-disabled={!bookable}
       className="hero-card group w-full max-w-sm cursor-pointer overflow-hidden rounded-3xl border border-line bg-panel text-left shadow-2xl shadow-black/40 transition-all hover:-translate-y-1 hover:border-orange"
     >
       <div className="relative aspect-4/5 w-full overflow-hidden bg-panel-2">
@@ -122,8 +130,8 @@ function FeaturedEventCard({
           <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-linear-to-br from-green-deep via-panel-2 to-bg p-6 text-center">
             <CalendarDays className="size-14 text-orange/70" />
             <p className="display text-3xl uppercase leading-tight text-cream">{event.title}</p>
-            <p className="label text-xs font-semibold" style={{ color: CATEGORY_COLORS[event.category] }}>
-              {event.category}
+            <p className="label text-xs font-semibold" style={{ color: itemColor(event) }}>
+              {itemCategoryLabel(event)}
             </p>
           </div>
         )}
@@ -132,7 +140,13 @@ function FeaturedEventCard({
           <CountdownChip event={event} />
         </div>
         <div className="absolute right-3 top-3">
-          {event.status === "OPEN" && !event.soldOut ? (
+          {!isBookableEvent(event) ? (
+            /* a published staff session: nothing to register for, so neither
+               "Open" nor "Closed" would be true of it */
+            <span className="label rounded-full bg-black/60 px-3 py-1.5 text-[10px] font-bold text-sage backdrop-blur-sm">
+              Session
+            </span>
+          ) : event.status === "OPEN" && !event.soldOut ? (
             <span className="label flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-[10px] font-bold text-green backdrop-blur-sm">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute h-full w-full animate-ping rounded-full bg-green opacity-60" />
@@ -178,7 +192,11 @@ function FeaturedEventCard({
           </span>
           <span className="flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-cream">
             <Tag className="size-3.5 text-orange" />
-            {event.soldOut ? "Fully booked" : event.price || "Free"}
+            {!isBookableEvent(event)
+              ? (event.host ?? "Open session")
+              : event.soldOut
+                ? "Fully booked"
+                : event.price || "Free"}
           </span>
         </div>
       </div>
@@ -192,10 +210,27 @@ export default function Hero() {
   const { data: events, isPending } = useEvents();
   const { openEvent } = useEventFlow();
 
-  /* the featured card shows the next OPEN event; when nothing is open,
-     whatever comes up next keeps the page alive */
-  const open = (events ?? []).filter((e) => e.status === "OPEN");
-  const upNext = nextEvent(open) ?? nextEvent(events ?? []);
+  /* The featured card wants a ticketed event — it is built around a poster, a
+     countdown and a price, none of which a staff session has. So: the next
+     OPEN event, else any upcoming event, and only if there is genuinely no
+     event at all does it fall back to the next published session.
+
+     That last fallback is the point: the "nothing coming up" pill should
+     disappear the moment ANYTHING is on the calendar, not just a ticketed
+     event. */
+  const all = events ?? [];
+  const ticketed = all.filter(isBookableEvent);
+  const open = ticketed.filter((e) => e.status === "OPEN");
+  const upNext = nextEvent(open) ?? nextEvent(ticketed) ?? nextEvent(all);
+
+  /* People who take bookings, for the empty card.
+
+     Read from the booking directory, NOT inferred from the events feed. The
+     feed only knows about someone once they have published an item on the
+     calendar, so a colleague who is open for bookings but has scheduled
+     nothing public counted as zero — and the card hid the one action that was
+     actually available. */
+  const hostCount = useBookingHosts().data?.length ?? 0;
 
   /* intro for the copy column. clearProps wipes the inline styles the tween
      leaves behind, so an interrupted animation can never strand an element
@@ -289,14 +324,7 @@ export default function Hero() {
           ) : upNext ? (
             <FeaturedEventCard event={upNext} onOpen={() => openEvent(upNext)} />
           ) : (
-            <a
-              href="#calendar"
-              className="hero-card mt-3 flex items-center gap-2.5 rounded-full border border-line bg-panel px-5 py-2.5 transition-colors hover:border-orange"
-            >
-              <span className="text-sm text-cream-dim">
-                Nothing coming up yet — see the full calendar
-              </span>
-            </a>
+            <HeroEmptyCard hostCount={hostCount} />
           )}
         </div>
       </div>

@@ -32,9 +32,12 @@ export function EmptyState({
 /* Error state — say what went wrong and offer a retry. */
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-red-200 bg-red-50 px-6 py-12 text-center">
-      <AlertCircle className="size-6 text-red-500" />
-      <p className="text-sm text-red-700">{message}</p>
+    /* The admin console has no light mode — .admin-scope surfaces are
+       oklch(0.205) near-black — so the old border-red-200/bg-red-50/text-red-700
+       set rendered as a glaring cream card with barely-legible text on it. */
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-destructive/35 bg-destructive/10 px-6 py-12 text-center">
+      <AlertCircle className="size-6 text-destructive" />
+      <p className="text-sm text-foreground">{message}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
           Try again

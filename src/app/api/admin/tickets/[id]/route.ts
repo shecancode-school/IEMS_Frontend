@@ -4,6 +4,7 @@ import { Event, Guest, Participant, ScanLog, Ticket } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { buildTicketView } from "@/lib/tickets";
 import { ok, unauthorized, notFound } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin: view a single ticket (with QR + scan history). */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -61,6 +62,16 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
       { $inc: { registeredCount: -1 } }
     );
   }
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "ticket.delete",
+    target: { type: "ticket", id: ticket._id.toString(), label: ticket.ticketNumber },
+    summary:
+      `Deleted pass ${ticket.ticketNumber}` +
+      (ticket.status !== "REVOKED" ? ", releasing its seat" : ""),
+  });
 
   return ok({ deleted: true });
 }

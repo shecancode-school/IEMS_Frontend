@@ -1,76 +1,68 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import mongoose from "mongoose";
-import * as adminLogin from "@/app/api/admin/login/route";
-import * as scannerLogin from "@/app/api/scanner/login/route";
 import * as stats from "@/app/api/admin/stats/route";
 import * as dashboard from "@/app/api/admin/dashboard/route";
 import * as adminEvents from "@/app/api/admin/events/route";
 import * as attendees from "@/app/api/admin/attendees/route";
 import * as guests from "@/app/api/admin/guests/route";
 import * as tickets from "@/app/api/admin/tickets/route";
-import * as scanners from "@/app/api/admin/scanners/route";
 import * as notifications from "@/app/api/admin/notifications/route";
 import * as validate from "@/app/api/tickets/validate/route";
 import * as requestLink from "@/app/api/auth/request-link/route";
+import { staffCookie, clearTestSessions } from "../staffAuth";
 
-/* Authenticated / write-path coverage against real Atlas. Logs in as the
-   seeded super-admin and scanner (same env defaults `pnpm seed` uses), then
-   drives the protected read endpoints and the auth gates. Writes are limited
-   to benign ones (scanner lastSeenAt on login); no rosters are mutated and no
-   emails are sent (the request-link tests use the validation + unregistered
-   paths, which never call the mailer). */
+/* Authenticated / write-path coverage against real Atlas. Opens a staff
+   session for an active administrator the same way the Google callback does,
+   then drives the protected read endpoints and the auth gates. No rosters are
+   mutated and no emails are sent (the request-link tests use the validation +
+   unregistered paths, which never call the mailer). */
 
 const ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL ?? "admin@igirerwanda.org").toLowerCase();
-const ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD ?? "";
-const SCANNER_EMAIL = (process.env.SCANNER_EMAIL ?? "scanner@igirerwanda.org").toLowerCase();
-const SCANNER_PASSWORD = process.env.SCANNER_PASSWORD ?? ADMIN_PASSWORD;
+/* staff auth is a cookie now — Google sign-in replaced the password login */
 
-const jsonReq = (path: string, body: unknown, token?: string) =>
+/* `cookie` carries the staff session; `token` is still a bearer, for the
+   attendee endpoints that have not moved to cookies. */
+const jsonReq = (path: string, body: unknown, auth?: { token?: string; cookie?: string }) =>
   new Request(`http://localhost${path}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(auth?.token ? { authorization: `Bearer ${auth.token}` } : {}),
+      ...(auth?.cookie ? { cookie: auth.cookie } : {}),
     },
     body: JSON.stringify(body),
   });
 
-const authGet = (path: string, token?: string) =>
+const authGet = (path: string, auth?: { token?: string; cookie?: string }) =>
   new Request(`http://localhost${path}`, {
-    headers: token ? { authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(auth?.token ? { authorization: `Bearer ${auth.token}` } : {}),
+      ...(auth?.cookie ? { cookie: auth.cookie } : {}),
+    },
   });
 
-let adminToken = "";
-let scannerToken = "";
+let adminCookie = "";
 
 beforeAll(async () => {
-  const res = await adminLogin.POST(jsonReq("/api/admin/login", { email: ADMIN_EMAIL, password: ADMIN_PASSWORD }));
-  expect(res.status, "admin login failed — is the super admin seeded?").toBe(200);
-  adminToken = (await res.json()).accessToken;
+  const cookie = await staffCookie(ADMIN_EMAIL);
+  expect(cookie, "no active administrator — run `pnpm seed` first").toBeTruthy();
+  adminCookie = cookie!;
 
-  const sres = await scannerLogin.POST(
-    jsonReq("/api/scanner/login", { email: SCANNER_EMAIL, password: SCANNER_PASSWORD })
-  );
-  if (sres.status === 200) scannerToken = (await sres.json()).accessToken;
 });
 
 afterAll(async () => {
+  await clearTestSessions();
   await mongoose.disconnect().catch(() => {});
 });
 
-describe("admin/login", () => {
-  it("issues an access token for valid credentials", () => {
-    expect(adminToken).toMatch(/^ey/); // JWT
+describe("staff session", () => {
+  it("opens a session for the seeded admin", () => {
+    expect(adminCookie).toContain("iems_staff=");
   });
 
-  it("rejects a wrong password with 401", async () => {
-    const res = await adminLogin.POST(jsonReq("/api/admin/login", { email: ADMIN_EMAIL, password: "nope-nope-nope" }));
+  it("rejects a forged session cookie", async () => {
+    const res = await stats.GET(authGet("/api/admin/stats", { cookie: "iems_staff=not-a-real-token" }));
     expect(res.status).toBe(401);
-  });
-
-  it("rejects a malformed body with 400", async () => {
-    const res = await adminLogin.POST(jsonReq("/api/admin/login", { email: "not-an-email" }));
-    expect(res.status).toBe(400);
   });
 });
 
@@ -82,7 +74,6 @@ const adminEndpoints: { name: string; get: (r: Request) => Promise<Response>; ke
   { name: "admin/attendees", get: attendees.GET, key: "attendees" },
   { name: "admin/guests", get: guests.GET, key: "guests" },
   { name: "admin/tickets", get: tickets.GET, key: "tickets" },
-  { name: "admin/scanners", get: scanners.GET, key: "scanners" },
   { name: "admin/notifications", get: notifications.GET, key: "notifications" },
 ];
 
@@ -93,36 +84,28 @@ describe.each(adminEndpoints)("GET /api/$name", ({ get, key }) => {
   });
 
   it("returns data for an authenticated admin", async () => {
-    const res = await get(authGet("/x", adminToken));
+    const res = await get(authGet("/x", { cookie: adminCookie }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toHaveProperty(key);
   });
 });
 
-describe("scanner/login", () => {
-  it("issues a scanner token for valid credentials", () => {
-    /* skips gracefully if no scanner account is seeded in this environment */
-    if (!scannerToken) return;
-    expect(scannerToken).toMatch(/^ey/);
-  });
-});
-
 describe("POST /api/tickets/validate", () => {
-  it("rejects a non-scanner with 401", async () => {
+  it("rejects an unauthenticated caller with 401", async () => {
     const res = await validate.POST(jsonReq("/api/tickets/validate", { code: "ABC123" }));
     expect(res.status).toBe(401);
   });
 
-  it("rejects an empty body for a scanner with 400", async () => {
-    if (!scannerToken) return;
-    const res = await validate.POST(jsonReq("/api/tickets/validate", {}, scannerToken));
+  it("rejects an empty body from an authorised scanner with 400", async () => {
+    const res = await validate.POST(jsonReq("/api/tickets/validate", {}, { cookie: adminCookie }));
     expect(res.status).toBe(400);
   });
 
   it("reports an unsigned QR as invalid (not consumed)", async () => {
-    if (!scannerToken) return;
-    const res = await validate.POST(jsonReq("/api/tickets/validate", { qr: "definitely-not-a-real-token" }, scannerToken));
+    const res = await validate.POST(
+      jsonReq("/api/tickets/validate", { qr: "definitely-not-a-real-token" }, { cookie: adminCookie })
+    );
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.valid).toBe(false);

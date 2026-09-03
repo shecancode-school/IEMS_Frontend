@@ -28,15 +28,43 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-type Service = { name: string; ok: boolean; detail: string; ms: number };
+type Service = {
+  name: string;
+  ok: boolean;
+  /* "not_configured" is not an outage — a deployment without Cloudinary or
+     Google is a legitimate configuration, not a broken one */
+  status: "ok" | "down" | "not_configured";
+  detail: string;
+  ms: number;
+};
+type DayStatus = "ok" | "partial" | "none";
 type Health = {
   ok: boolean;
   services: Service[];
   checkedAt: string;
   uptimeSeconds: number;
+  /* The unattended monitor: the only check that runs when nobody is on the
+     site. Its age is computed server-side, both because the browser's clock is
+     not authoritative and because reading Date.now() in render is impure. */
+  monitor: { lastCronAt: string | null; ageMinutes: number | null; stale: boolean };
   queue: { ticketEmails: number; pendingVerifications: number; awaitingTicket: number };
   traffic: { scansLastHour: number; scansToday: number };
+  /* 90 days of recorded samples per service — omitted from this type before,
+     so the dashboard could only ever show "right now" */
+  uptime: Record<string, { pct: number | null; days: { day: string; status: DayStatus }[] }>;
 };
+
+/* How long ago, in words, from an age the server measured. The exact
+   timestamp is noise on a dashboard; what you need to know is whether it was
+   minutes or days. */
+function ago(mins: number | null): string {
+  if (mins === null) return "never";
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
 
 function uptimeLabel(s: number) {
   const d = Math.floor(s / 86400);
@@ -97,6 +125,8 @@ export function SystemHealth() {
 
   const services = data?.services ?? [];
   const okCount = services.filter((s) => s.ok).length;
+  const cronAge = data?.monitor?.ageMinutes ?? null;
+  const cronStale = data?.monitor?.stale ?? true;
   const queued =
     (data?.queue?.ticketEmails ?? 0) +
     (data?.queue?.awaitingTicket ?? 0) +
@@ -111,7 +141,9 @@ export function SystemHealth() {
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                data.ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                data.ok
+                  ? "bg-emerald-500/15 text-emerald-300"
+                  : "bg-destructive/15 text-destructive"
               )}
             >
               {data.ok ? "All systems go" : "Degraded"}
@@ -142,7 +174,17 @@ export function SystemHealth() {
           }
           footer="Server running"
           footerIcon={Clock}
-          hint={data ? `Checked ${new Date(data.checkedAt).toLocaleTimeString()}` : "—"}
+          /* The monitor, not the page view. A wall of green whose last
+             unattended sample is three days old is not three days of uptime —
+             it is three days of nobody checking, and the two are
+             indistinguishable unless this line says so. */
+          hint={
+            data
+              ? cronStale
+                ? `Unattended check ${ago(cronAge)} — monitoring may be down`
+                : `Unattended check ${ago(cronAge)}`
+              : "—"
+          }
         />
         <StatCard
           label="Gate traffic"
@@ -174,7 +216,7 @@ export function SystemHealth() {
         />
         <StatCard
           label="Services"
-          value={`${okCount}/${services.length || 3}`}
+          value={`${okCount}/${services.length || 4}`}
           loading={isPending}
           badge={
             <>
@@ -184,9 +226,68 @@ export function SystemHealth() {
           }
           footer="Integrations"
           footerIcon={ServerIcon}
-          hint="Database · Cloudinary · Email"
+          hint={services.map((s) => s.name).join(" · ") || "Database · Cloudinary · Email"}
         />
       </div>
+
+      {/* 90 days of recorded samples, per service. The dashboard used to show
+          only the current second, so an outage that ended before you looked
+          left no trace anywhere in the console. */}
+      {data && services.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {services.map((s) => (
+            <UptimeRow key={s.name} service={s} uptime={data.uptime?.[s.name]} />
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function UptimeRow({
+  service,
+  uptime,
+}: {
+  service: Service;
+  uptime?: { pct: number | null; days: { day: string; status: DayStatus }[] };
+}) {
+  const days = uptime?.days ?? [];
+  return (
+    <div className="rounded-lg border bg-card/40 p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">{service.name}</span>
+        <span
+          className={cn(
+            "text-xs tabular-nums",
+            service.status === "down" ? "text-destructive" : "text-muted-foreground"
+          )}
+        >
+          {service.status === "not_configured"
+            ? "not configured"
+            : uptime?.pct != null
+              ? `${uptime.pct}%`
+              : "no history"}
+        </span>
+      </div>
+      {/* one bar per day, oldest left. Grey is "nothing recorded", which is a
+          different statement from green and must not look like it. */}
+      <div className="mt-2 flex h-6 items-end gap-px" aria-hidden>
+        {days.map((d) => (
+          <span
+            key={d.day}
+            title={`${d.day}: ${d.status === "none" ? "no data" : d.status}`}
+            className={cn(
+              "h-full flex-1 rounded-[1px]",
+              d.status === "ok" && "bg-emerald-500/70",
+              d.status === "partial" && "bg-amber-500/80",
+              d.status === "none" && "bg-muted"
+            )}
+          />
+        ))}
+      </div>
+      <p className="mt-1 truncate text-[11px] text-muted-foreground" title={service.detail}>
+        {service.detail}
+      </p>
+    </div>
   );
 }

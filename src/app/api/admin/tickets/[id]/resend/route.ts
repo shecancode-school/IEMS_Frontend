@@ -4,6 +4,7 @@ import { Ticket } from "@/models";
 import { requireAdmin } from "@/lib/auth";
 import { resendTicket } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin: re-email the existing ticket (same QR). */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -20,5 +21,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const sent = await resendTicket(ticket);
   if (!sent) return fail("This ticket has no active holder to email", 409);
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "ticket.resend",
+    target: { type: "ticket", id: ticket._id.toString(), label: ticket.ticketNumber },
+    summary: `Re-sent pass ${ticket.ticketNumber} by email`,
+  });
+
   return ok({ ticket: { id: ticket._id, ticketNumber: ticket.ticketNumber, sentAt: ticket.sentAt } });
 }

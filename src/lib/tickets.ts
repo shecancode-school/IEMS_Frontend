@@ -274,6 +274,9 @@ export async function emailTicket(holder: Holder, event: EventDoc, code: string)
     eventImage: posterUrl,
     ticketCode: code,
     ticketUrl: url,
+    /* online and hybrid events carry the join link on the pass email, so a
+       registrant has the QR and the Meet link in the same message */
+    meetLink: event.mode !== "IN_PERSON" ? event.meetLink || null : null,
     validUntil: eventDeadline(event),
     qrPng: qr,
     pdf,

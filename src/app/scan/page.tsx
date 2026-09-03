@@ -1,40 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { ApiError } from "@/lib/client";
-import { useScannerAuth, useAuthHydrated } from "@/context/AuthContext";
-import { PortalShell, Panel, Field, Button, Note, Waiting } from "@/components/portal/ui";
-import PasswordField from "@/components/portal/PasswordField";
+import Link from "next/link";
+import { useAdminAuth, useAuthHydrated } from "@/context/AuthContext";
+import { useMe } from "@/hooks/admin/staff";
+import { PortalShell, Panel, Button, Note, Waiting } from "@/components/portal/ui";
 import Scanner from "@/components/portal/Scanner";
 
-/* Entrance scanning for partner organizations: sign in with the access key
-   given by the super admin, then scan tickets */
-export default function OrgScanPage() {
+/* Gate check-in.
+
+   Standalone scanner device accounts are gone: sign-in is Google-only, and
+   scanning is a duty an administrator grants to a staff account. That means
+   whoever is on the door signs in as themselves, every check-in is attributed
+   to a real person in the audit log, and revoking gate access is a toggle
+   rather than a shared password nobody can rotate. */
+export default function GateScanPage() {
   const hydrated = useAuthHydrated();
-  const { isAuthenticated, user, login, logout } = useScannerAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const busy = login.isPending;
+  const { isAuthenticated, user } = useAdminAuth();
+  const { data: me, isPending } = useMe(isAuthenticated);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (busy) return;
-    setError("");
-    try {
-      await login.mutateAsync({ email, password });
-      /* success unmounts this form (isAuthenticated flips), so there's no
-         second-submit window to guard beyond the pending state */
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong");
-    }
-  }
-
-  /* the scanner session comes from localStorage, so wait for hydration to
-     avoid an SSR/client mismatch */
-  if (!hydrated) {
+  if (!hydrated || (isAuthenticated && isPending)) {
     return (
-      <PortalShell eyebrow="Venue check-in" title="Partner sign in">
+      <PortalShell eyebrow="Venue check-in" title="Gate">
         <Panel>
           <Waiting message="Loading…" />
         </Panel>
@@ -42,49 +28,51 @@ export default function OrgScanPage() {
     );
   }
 
-  return (
-    <PortalShell
-      eyebrow="Venue check-in"
-      title={isAuthenticated ? `Scanning as ${user?.name ?? ""}` : "Scanner sign in"}
-    >
-      {isAuthenticated ? (
-        <div className="space-y-4">
-          <Scanner role="scanner" profile={{ name: user?.name, email: user?.email }} />
-          <Button variant="ghost" onClick={() => logout.mutate()}>
-            Sign out
-          </Button>
-        </div>
-      ) : (
+  if (!isAuthenticated) {
+    return (
+      <PortalShell eyebrow="Venue check-in" title="Sign in to scan">
         <Panel>
-          <form onSubmit={submit} className="space-y-4">
-            <p className="text-sm text-cream-dim">
-              Sign in with the scanner account provided by the event admin.
-            </p>
-            <Field
-              label="Email"
-              type="email"
-              name="email"
-              autoComplete="username"
-              autoFocus
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <PasswordField
-              label="Password"
-              name="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <Button type="submit" busy={busy} className="w-full">
-              {busy ? "Checking…" : "Start scanning"}
+          <p className="text-sm text-cream-dim">
+            Sign in with your organization Google account. Ask an administrator to grant you scan
+            access if you have not been given it yet.
+          </p>
+          <a href="/api/auth/google/start" className="mt-4 block">
+            <Button type="button" className="w-full">
+              Continue with Google
             </Button>
-            {error && <Note tone="error">{error}</Note>}
-          </form>
+          </a>
         </Panel>
-      )}
+      </PortalShell>
+    );
+  }
+
+  /* the server enforces this too — the page just explains it rather than
+     letting someone scan and collect a wall of 401s */
+  const canScan = me?.admin.canScan || me?.admin.role === "ADMIN" || me?.admin.role === "CEO";
+
+  if (!canScan) {
+    return (
+      <PortalShell eyebrow="Venue check-in" title="No scan access">
+        <Panel>
+          <Note tone="error">
+            Your account does not have gate access. An administrator can grant it under Staff.
+          </Note>
+          <Link href="/admin/calendar" className="mt-4 inline-block text-orange underline">
+            Back to the console
+          </Link>
+        </Panel>
+      </PortalShell>
+    );
+  }
+
+  return (
+    <PortalShell eyebrow="Venue check-in" title={`Scanning as ${user?.name ?? ""}`}>
+      <div className="space-y-4">
+        <Scanner role="admin" profile={{ name: user?.name, email: user?.email }} />
+        <Link href="/admin/calendar" className="inline-block text-sm text-cream-dim underline">
+          Back to the console
+        </Link>
+      </div>
     </PortalShell>
   );
 }

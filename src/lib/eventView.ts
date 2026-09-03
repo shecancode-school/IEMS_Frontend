@@ -44,6 +44,9 @@ export function eventView(event: EventDoc, now = new Date()) {
     startTime: event.startTime,
     endTime: event.endTime ?? null,
     location: event.location,
+    /* the public card says "online" so people know what they are registering
+       for; the Meet link itself is emailed to registrants only */
+    mode: event.mode ?? "IN_PERSON",
     organiser: event.organiser,
     price: event.price,
     gallery: event.gallery,
@@ -72,10 +75,22 @@ export function capacityView(event: EventDoc) {
    — on UTC hosts the old server-local formatting showed times two hours off */
 
 /* The landing-page calendar shape, now carrying capacity + lifecycle status. */
-export function toVenueEvent(e: EventDoc, now = new Date()): VenueEvent {
+export function toVenueEvent(
+  e: EventDoc,
+  now = new Date(),
+  hostName: string | null = null,
+  hostSlug: string | null = null
+): VenueEvent {
   return {
     id: e.slug,
     title: e.name,
+    kind: "EVENT",
+    /* populated when a staff member is assigned to run it */
+    host: hostName,
+    hostSlug,
+    /* a ticketed event is attended where it is held; the online/hybrid
+       distinction is a property of sessions */
+    mode: null,
     category: e.category,
     date: eventDayISO(e.startTime),
     time: formatEventTime(e.startTime),

@@ -36,6 +36,8 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
     rules: event.rules,
     price: event.price,
     location: event.location,
+    mode: event.mode ?? "IN_PERSON",
+    host: event.host?.id ?? undefined,
     isPublished: event.isPublished,
     status: event.status,
   };
@@ -48,7 +50,8 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
       /* the form's datetime-local values are Kigali wall clock; pin the
          offset so the API stores the exact instant regardless of server TZ */
       startTime: kigaliInputToISO(v.startTime),
-      endTime: v.endTime ? kigaliInputToISO(v.endTime) : null,
+      /* the form requires an end time now, so the null branch is gone */
+      endTime: kigaliInputToISO(v.endTime),
       gallery: v.gallery,
       organiser: v.organiser,
       maxAttendees: v.maxAttendees,
@@ -56,6 +59,8 @@ export default function EditEventPage({ params }: { params: Promise<{ id: string
       rules: v.rules,
       price: v.price,
       location: v.location,
+      mode: v.mode,
+      host: v.host || null,
       isPublished: v.isPublished,
       status: v.status,
     };

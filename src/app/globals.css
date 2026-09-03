@@ -46,6 +46,12 @@
   --chart-4: var(--terracotta);
   --chart-5: var(--sage);
   --radius: 0.625rem;
+
+  /* The calendar's "today / selected" accent. Orange on both surfaces, so the
+     public board and the admin board agree about what today looks like. It is
+     deliberately NOT one of the four source colours: today, selection and
+     source can all land on the same block at once. */
+  --calendar-accent: var(--orange);
   --sidebar: var(--panel);
   --sidebar-foreground: var(--cream);
   --sidebar-primary: var(--orange);
@@ -260,6 +266,12 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.439 0 0);
+
+  /* Same accent as the public board. --primary in here is shadcn's near-WHITE,
+     so the old `bg-primary/5` today-wash was a 5% white film on a near-black
+     card — invisible. Everything date-stateful on the admin calendar uses this
+     instead. */
+  --calendar-accent: #f59300;
 
   background: var(--background);
   color: var(--foreground);

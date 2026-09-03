@@ -48,6 +48,9 @@ export async function runDailyReminders(): Promise<ReminderSummary> {
     startTime: { $gt: now },
     archivedAt: null,
     status: "OPEN",
+    /* an unpublished event is not a programme anyone should be hearing about —
+       see isLiveProgramme in src/lib/programme.ts for the shared definition */
+    isPublished: true,
   }).select("_id name startTime");
 
   const summary: ReminderSummary = { scanned: 0, sent: 0, failed: 0, skipped: 0 };

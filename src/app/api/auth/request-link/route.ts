@@ -6,6 +6,7 @@ import { Event, Participant, VerificationToken } from "@/models";
 import { sendMagicLinkEmail } from "@/lib/mailer";
 import { appUrl } from "@/lib/appUrl";
 import { ok, fail } from "@/lib/http";
+import { isLiveProgramme } from "@/lib/programme";
 
 const Body = z.object({
   email: z.string().email(),
@@ -26,8 +27,18 @@ export async function POST(req: Request) {
   let match: { participantId: string; eventName: string; name: string } | null = null;
   let sawFullEvent = false;
   for (const p of participants) {
-    const event = await Event.findOne({ _id: p.event, status: "OPEN" });
-    if (!event) continue;
+    /* Any LIVE programme, not just an OPEN one.
+
+       This used to require status: "OPEN", which is about whether REGISTRATION
+       is still taking people — so the moment an event closed its doors, every
+       participant already holding a ticket was locked out of the portal that
+       shows it. Closing registration is not the same as ending the event.
+
+       isLiveProgramme is the shared rule (published, out of draft, not
+       archived) that /api/me and the mailer also use, so a link is never
+       issued for a programme the portal would then refuse. */
+    const event = await Event.findById(p.event);
+    if (!event || !isLiveProgramme(event)) continue;
     /* capacity gate: don't start a login the event can't honour. A participant
        who already holds a ticket still counts toward the reserved slots, so
        only block when the event is full AND they have no ticket yet. */

@@ -2,9 +2,11 @@ import { configureStore } from "@reduxjs/toolkit";
 import authReducer, { type AuthState } from "./authSlice";
 
 /* A fresh store per client instance (created in Providers) keeps App Router
-   navigations from leaking state between requests during SSR. On the client the
-   admin/scanner sessions are preloaded from localStorage so authed pages have
-   their token on the very first render (no rehydrate race). */
+   navigations from leaking state between requests during SSR.
+
+   `preloadedState` is retained for tests that want to start from a known
+   session; the app itself passes nothing, because both sessions live in
+   httpOnly cookies and are restored by asking the server on mount. */
 export function makeStore(preloadedState?: { auth: AuthState }) {
   return configureStore({
     reducer: { auth: authReducer },

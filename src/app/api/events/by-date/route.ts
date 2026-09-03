@@ -1,6 +1,7 @@
 import { dbConnect } from "@/lib/db";
 import { Event } from "@/models";
 import { eventView } from "@/lib/eventView";
+import { kigaliDayStart, kigaliDayEnd } from "@/lib/time";
 import { ok, fail } from "@/lib/http";
 
 /* Public: events whose start time falls on a given calendar day.
@@ -10,10 +11,11 @@ export async function GET(req: Request) {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return fail("A `date` query in YYYY-MM-DD format is required");
   }
-  const dayStart = new Date(`${date}T00:00:00`);
+  /* the day window is a KIGALI day, not the server's — `new Date("…T00:00:00")`
+     parses in the host timezone and slid the window by two hours on a UTC box */
+  const dayStart = kigaliDayStart(date);
   if (Number.isNaN(dayStart.getTime())) return fail("Invalid date");
-  const dayEnd = new Date(dayStart);
-  dayEnd.setHours(23, 59, 59, 999);
+  const dayEnd = kigaliDayEnd(date);
 
   await dbConnect();
   const now = new Date();

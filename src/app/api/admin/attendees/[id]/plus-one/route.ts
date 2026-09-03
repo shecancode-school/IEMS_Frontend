@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { issueTicket, CapacityError } from "@/lib/tickets";
 import { sendPlusOneRevokedEmail } from "@/lib/mailer";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin management of a participant's single plus-one.
    DELETE = revoke (remove the guest, revoke their pass, free the seat, notify
@@ -55,6 +56,14 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   } catch (err) {
     console.error("plus-one revoked email failed", err);
   }
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "attendee.plus_one_revoke",
+    target: { type: "participant", id, label: "" },
+    summary: "Revoked a participant's plus-one and released the seat",
+  });
 
   return ok({ revoked: true });
 }
@@ -114,6 +123,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const ticket = await issueTicket({ kind: "Guest", doc: guest });
     await Participant.updateOne({ _id: participant._id }, { plusOne: guest._id });
+    await recordAudit({
+      actorId: admin.id,
+      req,
+      action: "attendee.plus_one_assign",
+      target: { type: "guest", id: guest._id.toString(), label: guest.name },
+      summary: `Assigned ${guest.name} <${email}> as ${participant.name}'s plus-one`,
+    });
     return ok(
       { plusOne: { id: guest._id, name: guest.name, email, ticketCode: ticket.code } },
       201

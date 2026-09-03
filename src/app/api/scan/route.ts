@@ -11,6 +11,7 @@ import {
   type TicketDoc,
 } from "@/models";
 import { requireScanner, verifyQrToken } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 import { publishScan, type ScanEvent } from "@/lib/scanBus";
 import { notifyAdmins } from "@/lib/notify";
 import { ok, fail, unauthorized } from "@/lib/http";
@@ -72,7 +73,10 @@ export async function POST(req: Request) {
   if (!parsed.success) return fail("QR payload is required");
 
   await dbConnect();
-  const scannedBy = { scannedByAdmin: scanner.adminId ?? null, scannedByScanner: scanner.scannerId ?? null };
+  /* scannedByScanner is only ever set on rows written before standalone
+     scanner accounts were retired; new scans are always attributed to a
+     staff account. */
+  const scannedBy = { scannedByAdmin: scanner.adminId, scannedByScanner: null };
 
   const broadcast = (event: ScanEvent) => {
     publishScan(event);
@@ -174,6 +178,16 @@ export async function POST(req: Request) {
   }
 
   await ScanLog.create({ ...scannedBy, ticket: ticket._id, result: "ACCEPTED" });
+  /* Only the accepted scan goes in the audit ledger: it is the one that
+     actually consumes a pass. Rejected attempts are already recorded in full
+     by ScanLog, and mirroring them here would double every gate event. */
+  void recordAudit({
+    actorId: scanner.adminId,
+    req,
+    action: "scan.checkin",
+    target: { type: "ticket", id: ticket._id.toString(), label: ticket.ticketNumber },
+    summary: `Checked in ${who} at ${eventName}`,
+  });
 
   /* the pass is consumed — archive the holder on the ticket, then delete the
      holder record so the same person is free to register for any other event */

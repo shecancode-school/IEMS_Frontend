@@ -17,6 +17,7 @@ import {
 import IdCard from "@/components/portal/IdCard";
 import ShareLinks from "@/components/portal/ShareLinks";
 import Confetti from "@/components/portal/Confetti";
+import MeetingsCard from "@/components/portal/MeetingsCard";
 import { RichText } from "@/components/RichText";
 import { formatEventDate } from "@/lib/time";
 
@@ -193,6 +194,10 @@ export default function DashboardPage() {
             <PlusOneCard me={me} onChanged={load} />
           </motion.div>
         )}
+        {/* booking used to live entirely outside the signed-in experience */}
+        <motion.div {...cardMotion(3)} className="md:col-span-2">
+          <MeetingsCard />
+        </motion.div>
       </div>
     </PortalShell>
   );

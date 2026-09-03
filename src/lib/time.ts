@@ -60,6 +60,22 @@ export function formatEventTime(d: Date | string): string {
   });
 }
 
+/* "10:00 AM" -> "10am", "10:30 AM" -> "10:30am".
+
+   A chip in a month cell is about 90px wide at the narrowest desktop size.
+   Spelling the time out in full leaves room for four or five characters of
+   title, which is not a title. Dropping the empty minutes and the space is how
+   every calendar application writes a time in a confined space.
+
+   Anything that is not a recognisable 12-hour clock time is returned
+   untouched — better a long label than a mangled one. */
+export function compactTime(time: string): string {
+  const m = /^(\d{1,2})(?::(\d{2}))?\s*([AP]M)$/i.exec(time.trim());
+  if (!m) return time;
+  const [, hour, minutes, meridiem] = m;
+  return `${hour}${minutes && minutes !== "00" ? `:${minutes}` : ""}${meridiem.toLowerCase()}`;
+}
+
 /* "Friday, July 17, 2026" (options can trim it down) */
 export function formatEventDate(
   d: Date | string,
@@ -85,4 +101,54 @@ export function formatEventDateTime(
   }
 ): string {
   return new Date(d).toLocaleString("en-US", { timeZone: EVENT_TZ, ...options });
+}
+
+/* ------------------------------------------------------------ day windows */
+/* Building a day window with `new Date("2026-03-05T00:00:00")` parses in the
+   SERVER's timezone, which on a UTC host is two hours off Kigali. Every range
+   query must go through these instead. */
+
+export function kigaliDayStart(dayISO: string): Date {
+  return new Date(`${dayISO}T00:00:00.000${EVENT_TZ_OFFSET}`);
+}
+
+export function kigaliDayEnd(dayISO: string): Date {
+  return new Date(`${dayISO}T23:59:59.999${EVENT_TZ_OFFSET}`);
+}
+
+/* a Kigali wall-clock time on a Kigali calendar day → the exact instant */
+export function kigaliTimeToInstant(dayISO: string, hhmm: string): Date {
+  return new Date(`${dayISO}T${hhmm}:00.000${EVENT_TZ_OFFSET}`);
+}
+
+/* "14:30" — the Kigali wall clock of an instant, for slot maths */
+export function kigaliHHmm(d: Date | string): string {
+  const p = kigaliParts(new Date(d));
+  return `${p.hour}:${p.minute}`;
+}
+
+/* 0 = Sunday … 6 = Saturday, in Kigali. Availability rules are keyed on this. */
+export function kigaliWeekday(d: Date | string): number {
+  const short = new Intl.DateTimeFormat("en-US", { timeZone: EVENT_TZ, weekday: "short" }).format(
+    new Date(d)
+  );
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(short);
+}
+
+/* pure "YYYY-MM-DD" arithmetic — no timezone involved, so it can't drift */
+export function addDaysISO(dayISO: string, days: number): string {
+  const d = new Date(`${dayISO}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/* every Kigali calendar day from `from` to `to`, inclusive */
+export function dayRangeISO(fromISO: string, toISO: string): string[] {
+  const days: string[] = [];
+  for (let d = fromISO; d <= toISO; d = addDaysISO(d, 1)) {
+    days.push(d);
+    /* a malformed range must not spin forever */
+    if (days.length > 400) break;
+  }
+  return days;
 }

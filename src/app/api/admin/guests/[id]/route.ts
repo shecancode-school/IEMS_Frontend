@@ -5,6 +5,7 @@ import { Event, Guest, Participant, ScanLog, Ticket, GUEST_TYPES } from "@/model
 import { requireAdmin } from "@/lib/auth";
 import { ticketQrDataUrl } from "@/lib/qr";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin: full profile of a single guest — identity, ticket + QR, who invited
    them, and their scan history. */
@@ -165,6 +166,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     throw err;
   }
 
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "guest.update",
+    target: { type: "guest", id: g._id.toString(), label: g.name },
+    summary: `Updated guest ${g.name}`,
+  });
+
   return ok({ guest: { id: g._id, name: g.name, email: g.email, guestType: g.guestType } });
 }
 
@@ -198,6 +207,16 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
       { $inc: { registeredCount: -1 } }
     );
   }
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "guest.delete",
+    target: { type: "guest", id: g._id.toString(), label: g.name },
+    summary:
+      `Deleted guest ${g.name} <${g.email}>` +
+      (liveTicket > 0 ? ", releasing their seat" : ""),
+  });
 
   return ok({ deleted: true });
 }

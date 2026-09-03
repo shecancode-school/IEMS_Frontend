@@ -3,6 +3,7 @@
    through the TanStack Query hooks in src/hooks/admin. */
 
 import { api } from "@/lib/client";
+import type { CreatedBooking } from "@/services/booking";
 import { bridgeGetToken } from "@/lib/authBridge";
 import type {
   AdminEvent,
@@ -14,7 +15,15 @@ import type {
   AdminGuest,
   AdminNotification,
   AdminParticipant,
-  AdminScanner,
+  AdminStaff,
+  AdminActivity,
+  AuditRow,
+  CalendarEventDetail,
+  CalendarFeed,
+  CalendarPerson,
+  DirectoryPerson,
+  AdminRole,
+  Capability,
   AdminTicket,
   DashboardStats,
   EventStat,
@@ -29,8 +38,8 @@ import type {
   ParticipantCreateValues,
   ParticipantEditValues,
   PlusOneAssignValues,
-  ScannerCreateValues,
-  ScannerEditValues,
+  StaffCreateValues,
+  StaffEditValues,
 } from "@/schemas/admin";
 import type { EventEngagement, ReminderSummary } from "@/types/admin";
 
@@ -53,6 +62,17 @@ export const dashboardService = {
 
 /* ---------------------------------------------------------------- Events */
 export const eventsService = {
+  /* one event, readable by any staff member — the calendar's detail panel.
+     The list endpoint beside it is administrators only. */
+  get: (id: string) =>
+    api<{ event: CalendarEventDetail }>(`/api/admin/events/${id}`, { role: "admin" }),
+  /* generate (or refresh) the Google Meet link for an online/hybrid event —
+     created on the host's own calendar, which is why the event needs a host */
+  generateMeet: (id: string) =>
+    api<{ meetLink: string | null; pending: boolean; message?: string }>(
+      `/api/admin/events/${id}/meet`,
+      { role: "admin", method: "POST" }
+    ),
   list: () => api<{ events: AdminEvent[] }>("/api/admin/events", { role: "admin" }),
   create: (body: EventCreateValues) =>
     api<{ event: { id: string; name: string; slug: string } }>("/api/admin/events", {
@@ -188,22 +208,301 @@ export const ticketsService = {
     ),
 };
 
-/* -------------------------------------------------------------- Scanners */
-export const scannersService = {
-  list: () => api<{ scanners: AdminScanner[] }>("/api/admin/scanners", { role: "admin" }),
-  create: (body: ScannerCreateValues) =>
-    api<{ scanner: { id: string; name: string; email: string } }>("/api/admin/scanners", {
+/* -------------------------------------------------------------- Calendar */
+export type CalendarFilters = {
+  from?: string;
+  to?: string;
+  people?: string[];
+  sources?: string[];
+  includeGoogle?: boolean;
+};
+
+export type DayFeed = CalendarFeed & {
+  date: string;
+  lanes: { person: CalendarPerson; items: CalendarFeed["items"] }[];
+  unassigned: CalendarFeed["items"];
+};
+
+const calendarQuery = (f: CalendarFilters) =>
+  qs({
+    from: f.from,
+    to: f.to,
+    people: f.people?.length ? f.people.join(",") : undefined,
+    sources: f.sources?.length ? f.sources.join(",") : undefined,
+    includeGoogle: f.includeGoogle ? "1" : undefined,
+  });
+
+export const calendarService = {
+  feed: (f: CalendarFilters = {}) =>
+    api<CalendarFeed>(`/api/admin/calendar${calendarQuery(f)}`, { role: "admin" }),
+  day: (date: string, includeGoogle = false) =>
+    api<DayFeed>(`/api/admin/calendar/day${qs({ date, includeGoogle: includeGoogle ? "1" : undefined })}`, {
+      role: "admin",
+    }),
+  mine: (f: CalendarFilters = {}) =>
+    api<CalendarFeed>(
+      `/api/admin/calendar/me${qs({
+        from: f.from,
+        to: f.to,
+        includeGoogle: f.includeGoogle === false ? "0" : undefined,
+      })}`,
+      { role: "admin" }
+    ),
+  people: () =>
+    api<{ people: (CalendarPerson & { isYou: boolean })[] }>("/api/admin/calendar/people", {
+      role: "admin",
+    }),
+  /* a long-lived subscription URL for Google Calendar / Outlook */
+  icsUrl: () =>
+    api<{ url: string; webcalUrl: string }>("/api/calendar/ics", { role: "admin" }),
+};
+
+export const directoryService = {
+  snapshot: () => api<{ people: DirectoryPerson[] }>("/api/admin/directory", { role: "admin" }),
+};
+
+export type ActivityCreateBody = {
+  title: string;
+  description?: string;
+  type: string;
+  start: string;
+  end: string;
+  mode: string;
+  location?: string;
+  visibility: string;
+  attendees?: { email: string; name: string }[];
+  eventId?: string;
+  ownerId?: string;
+};
+
+export const activitiesService = {
+  list: (f: { from?: string; to?: string; owner?: string; type?: string } = {}) =>
+    api<{ activities: AdminActivity[] }>(`/api/admin/activities${qs(f)}`, { role: "admin" }),
+  get: (id: string) =>
+    api<{ activity: AdminActivity }>(`/api/admin/activities/${id}`, { role: "admin" }),
+  create: (body: ActivityCreateBody) =>
+    api<{ activity: AdminActivity; warning: string | null }>("/api/admin/activities", {
       role: "admin",
       body,
     }),
-  update: (id: string, body: ScannerEditValues) =>
-    api<{ scanner: Record<string, unknown> }>(`/api/admin/scanners/${id}`, {
+  update: (id: string, body: Partial<ActivityCreateBody>) =>
+    api<{ activity: AdminActivity }>(`/api/admin/activities/${id}`, {
       role: "admin",
       method: "PATCH",
       body,
     }),
-  remove: (id: string) =>
-    api<{ deleted: boolean }>(`/api/admin/scanners/${id}`, { role: "admin", method: "DELETE" }),
+  cancel: (id: string) =>
+    api<{ cancelled: boolean }>(`/api/admin/activities/${id}`, {
+      role: "admin",
+      method: "DELETE",
+    }),
+};
+
+/* ---------------------------------------------------------- Availability */
+export type AvailabilityView = {
+  bookable: boolean;
+  slug: string;
+  headline: string;
+  bio: string;
+  timezone: string;
+  slotMinutes: number;
+  bufferMinutes: number;
+  leadTimeMinutes: number;
+  horizonDays: number;
+  maxPerDay: number;
+  weekly: { weekday: number; start: string; end: string }[];
+  blackouts: { start: string; end: string; reason: string }[];
+};
+
+export const availabilityService = {
+  get: () =>
+    api<{ availability: AvailabilityView }>("/api/admin/availability", { role: "admin" }),
+  save: (body: AvailabilityView) =>
+    api<{ availability: AvailabilityView }>("/api/admin/availability", {
+      role: "admin",
+      method: "PUT",
+      body,
+    }),
+};
+
+/* -------------------------------------------------------------- Bookings */
+export type AdminBooking = {
+  id: string;
+  requesterName: string;
+  requesterEmail: string;
+  requesterPhone: string;
+  topic: string;
+  start: string;
+  end: string;
+  status: "PENDING" | "CONFIRMED" | "CANCELLED";
+  meetLink: string | null;
+  source: "PUBLIC" | "ADMIN";
+  createdAt: string;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+};
+
+/* One booking, with the requester's details — GET /api/admin/bookings/:id.
+   Only the host and an administrator can read it; everyone else sees the
+   anonymous busy block the calendar feed already gives them. */
+export type AdminBookingDetail = AdminBooking & {
+  hostId: string;
+  hostName: string | null;
+  /* null when the host has stopped taking bookings — the panel uses it to
+     fetch open times, so no slug means no reschedule */
+  hostSlug: string | null;
+};
+
+export const bookingsService = {
+  get: (id: string) =>
+    api<{ booking: AdminBookingDetail }>(`/api/admin/bookings/${id}`, { role: "admin" }),
+  /* move a booking to another time. The slot is re-checked server-side against
+     the host's live availability, exactly as a new booking is. */
+  reschedule: (id: string, start: string) =>
+    api<{ booking: { id: string; start: string; end: string; hostName: string; meetLink: string | null } }>(
+      `/api/admin/bookings/${id}`,
+      { role: "admin", method: "PATCH", body: { start } }
+    ),
+  list: (f: { status?: string; host?: string; from?: string; to?: string } = {}) =>
+    api<{ hostName: string | null; bookings: AdminBooking[] }>(
+      `/api/admin/bookings${qs(f)}`,
+      { role: "admin" }
+    ),
+  cancel: (id: string) =>
+    api<{ cancelled: boolean }>(`/api/admin/bookings/${id}`, {
+      role: "admin",
+      method: "DELETE",
+    }),
+  /* book on someone's behalf — the walk-in at the desk. The slot is
+     re-validated server-side against the host's live availability. */
+  create: (body: {
+    slug: string;
+    name: string;
+    email: string;
+    phone?: string;
+    topic?: string;
+    start: string;
+  }) => api<{ booking: CreatedBooking }>("/api/admin/bookings", { role: "admin", body }),
+};
+
+/* -------------------------------------------------------------- API keys */
+export type AdminApiKey = {
+  id: string;
+  label: string;
+  organisation: string;
+  contactName: string;
+  contactEmail: string;
+  website: string;
+  purpose: string;
+  keyPrefix: string | null;
+  scopes: string[];
+  status: "PENDING" | "ACTIVE" | "REVOKED" | "REJECTED";
+  rateLimitPerMinute: number;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  lastUsedAt: string | null;
+  requestCount: number;
+  createdAt: string;
+};
+
+export const apiKeysService = {
+  list: (status?: string) =>
+    api<{ keys: AdminApiKey[] }>(`/api/admin/api-keys${qs({ status })}`, { role: "admin" }),
+  /* the only response that ever contains the raw key */
+  approve: (id: string, opts: { rateLimitPerMinute?: number; scopes?: string[] } = {}) =>
+    api<{
+      key: string;
+      keyPrefix: string;
+      scopes: string[];
+      rateLimitPerMinute: number;
+      warning: string;
+    }>(`/api/admin/api-keys/${id}/approve`, {
+      role: "admin",
+      body: {
+        ...(opts.rateLimitPerMinute ? { rateLimitPerMinute: opts.rateLimitPerMinute } : {}),
+        ...(opts.scopes?.length ? { scopes: opts.scopes } : {}),
+      },
+    }),
+  revoke: (id: string, reason?: string) =>
+    api<{ revoked: boolean }>(`/api/admin/api-keys/${id}/revoke`, {
+      role: "admin",
+      body: reason ? { reason } : {},
+    }),
+};
+
+/* ---------------------------------------------------------------- Google */
+export type GoogleStatus = {
+  available: boolean;
+  connected: boolean;
+  needsReconnect: boolean;
+  email: string | null;
+  scopes: string[];
+  status: string | null;
+  lastError: string | null;
+  connectedAt: string | null;
+  lastUsedAt: string | null;
+};
+
+export const googleService = {
+  status: () => api<GoogleStatus>("/api/admin/google/status", { role: "admin" }),
+  /* returns the consent URL rather than redirecting, because a top-level
+     navigation would not carry the bearer token — see the connect route */
+  connect: () =>
+    api<{ authUrl: string }>("/api/admin/google/connect", { role: "admin", method: "POST" }),
+  disconnect: () =>
+    api<{ disconnected: boolean }>("/api/admin/google/disconnect", {
+      role: "admin",
+      method: "DELETE",
+    }),
+};
+
+/* ----------------------------------------------------------------- Staff */
+export type StaffRow = AdminStaff & { googleConnected: boolean };
+
+export type AdminIdentity = {
+  admin: {
+    id: string;
+    name: string;
+    email: string;
+    role: AdminRole;
+    title: string | null;
+    /* the Google profile picture, refreshed at each sign-in */
+    photoUrl: string | null;
+    bio: string | null;
+    /* gate duty, granted by an administrator */
+    canScan: boolean;
+    active: boolean;
+    lastSignInAt: string | null;
+  };
+  capabilities: Capability[];
+  google: { connected: boolean; email: string | null; status: string | null };
+};
+
+export const meService = {
+  /* Authoritative identity, read from the session cookie. Nothing is cached
+     client-side any more, so this is the only way to know who you are — and
+     it is what makes a promotion, a demotion or a revoked scan grant visible
+     without signing out and back in. */
+  get: () => api<AdminIdentity>("/api/auth/staff/session", { role: "admin" }),
+};
+
+export const staffService = {
+  list: () => api<{ staff: StaffRow[] }>("/api/admin/staff", { role: "admin" }),
+  create: (body: StaffCreateValues) =>
+    api<{ staff: { id: string; name: string; email: string; role: AdminRole } }>(
+      "/api/admin/staff",
+      { role: "admin", body }
+    ),
+  update: (id: string, body: StaffEditValues) =>
+    api<{ staff: Record<string, unknown> }>(`/api/admin/staff/${id}`, {
+      role: "admin",
+      method: "PATCH",
+      body,
+    }),
+  deactivate: (id: string) =>
+    api<{ deactivated: boolean }>(`/api/admin/staff/${id}`, { role: "admin", method: "DELETE" }),
 };
 
 /* -------------------------------------------------------- Notifications */
@@ -217,6 +516,14 @@ export const notificationsService = {
       role: "admin",
       method: "PATCH",
       body: ids ? { ids } : {},
+    }),
+};
+
+/* ---------------------------------------------------------------- Audit */
+export const auditService = {
+  list: (filters: { category?: string; q?: string } = {}) =>
+    api<{ logs: AuditRow[] }>(`/api/admin/audit${qs({ ...filters, limit: "100" })}`, {
+      role: "admin",
     }),
 };
 

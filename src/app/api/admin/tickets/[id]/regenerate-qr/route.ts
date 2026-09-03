@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { ticketQrDataUrl } from "@/lib/qr";
 import { ticketIdentity } from "@/lib/tickets";
 import { ok, unauthorized, notFound, fail } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin: rotate a ticket's QR secret. The old QR/code is invalidated the
    moment `code` changes, so a leaked screenshot can be revoked without
@@ -30,6 +31,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     name: who.name,
     type: who.type,
     eventName: event?.name,
+  });
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "ticket.regenerate_qr",
+    target: { type: "ticket", id: ticket._id.toString(), label: ticket.ticketNumber },
+    summary: `Regenerated the QR code for pass ${ticket.ticketNumber} — any older code stops working`,
   });
 
   return ok({ ticket: { id: ticket._id, ticketNumber: ticket.ticketNumber }, qrDataUrl });

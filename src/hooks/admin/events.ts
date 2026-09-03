@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { eventsService } from "@/services/admin";
 import type { EventCreateValues, EventUpdateBody } from "@/schemas/admin";
+import { useInvalidateCalendar } from "./calendar";
 import { adminKeys } from "./keys";
 import { errorMessage } from "./util";
 
@@ -38,10 +39,14 @@ export function useEventEngagement(id: string) {
 
 export function useCreateEvent() {
   const qc = useQueryClient();
+  const invalidateCalendar = useInvalidateCalendar();
   return useMutation({
     mutationFn: (body: EventCreateValues) => eventsService.create(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.events });
+      /* an event is a chip on the org calendar too — without this the board
+         only caught up on the next SSE frame, or on a reload */
+      invalidateCalendar();
       toast.success("Event created");
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -50,11 +55,14 @@ export function useCreateEvent() {
 
 export function useUpdateEvent() {
   const qc = useQueryClient();
+  const invalidateCalendar = useInvalidateCalendar();
   return useMutation({
     mutationFn: (vars: { id: string; body: EventUpdateBody }) =>
       eventsService.update(vars.id, vars.body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: adminKeys.events });
+      qc.invalidateQueries({ queryKey: adminKeys.event(vars.id) });
+      invalidateCalendar();
       toast.success("Event updated");
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -63,10 +71,12 @@ export function useUpdateEvent() {
 
 export function useDeleteEvent() {
   const qc = useQueryClient();
+  const invalidateCalendar = useInvalidateCalendar();
   return useMutation({
     mutationFn: (id: string) => eventsService.remove(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.events });
+      invalidateCalendar();
       toast.success("Event deleted");
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -91,6 +101,24 @@ export function useSendReminders() {
     mutationFn: (vars: { id: string; message?: string }) =>
       eventsService.sendReminders(vars.id, vars.message),
     onSuccess: (r) => toast.success(`Sent to ${r.sent} of ${r.recipients}`),
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+}
+
+/* Generate or refresh the Google Meet link for an online/hybrid event. */
+export function useGenerateMeet() {
+  const qc = useQueryClient();
+  const invalidateCalendar = useInvalidateCalendar();
+  return useMutation({
+    mutationFn: (id: string) => eventsService.generateMeet(id),
+    onSuccess: (data, id) => {
+      qc.invalidateQueries({ queryKey: adminKeys.events });
+      qc.invalidateQueries({ queryKey: adminKeys.event(id) });
+      qc.invalidateQueries({ queryKey: adminKeys.eventStats });
+      invalidateCalendar();
+      if (data.pending) toast.info(data.message ?? "Google is still creating the link.");
+      else toast.success("Meeting link ready");
+    },
     onError: (e) => toast.error(errorMessage(e)),
   });
 }

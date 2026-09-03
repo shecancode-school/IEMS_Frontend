@@ -18,6 +18,7 @@ import {
   Trash2,
   UserCheck,
   Users,
+  Video,
 } from "lucide-react";
 import {
   useEvent,
@@ -26,6 +27,7 @@ import {
   useUploadEventImage,
   useSendReminders,
   useEventEngagement,
+  useGenerateMeet,
 } from "@/hooks/admin/events";
 import { useEventStats } from "@/hooks/admin/dashboard";
 import type { EmailKind, EventEngagement } from "@/types/admin";
@@ -45,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { toast } from "sonner";
 import { formatEventDateTime } from "@/lib/time";
 
 /* event times always render in Kigali time, matching what the admin typed */
@@ -205,6 +208,10 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
+          {event.mode !== "IN_PERSON" && (
+            <OnlineCard eventId={event.id} meetLink={event.meetLink} host={event.host} />
+          )}
+
           <EngagementCard data={engagement.data} loading={engagement.isPending} />
 
           <Card className="shadow-none">
@@ -296,6 +303,9 @@ const EMAIL_KIND_LABEL: Record<EmailKind, string> = {
   PROGRESS_REMINDER: "Progress reminder",
   PLUS_ONE_REVOKED: "Plus-one removed",
   UPDATE: "Event update",
+  BOOKING_CONFIRMED: "Booking confirmed",
+  BOOKING_HOST_NOTICE: "New booking (host)",
+  BOOKING_CANCELLED: "Booking cancelled",
 };
 
 /* per-event engagement: who still needs a nudge, the plus-one split, and which
@@ -379,5 +389,81 @@ function MiniStat({ label, value, loading }: { label: string; value?: number; lo
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
     </div>
+  );
+}
+
+/* Online and hybrid events need a Google Meet link. It is created on the
+   host's own Google Calendar — Google will not mint a conference for a calendar
+   the token does not own — so the card leads with whatever is missing. */
+function OnlineCard({
+  eventId,
+  meetLink,
+  host,
+}: {
+  eventId: string;
+  meetLink: string | null;
+  host: { id: string; name: string } | null;
+}) {
+  const generate = useGenerateMeet();
+
+  return (
+    <Card className="shadow-none">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Video className="size-4 text-primary" />
+          Online meeting
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {!host ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+            Choose a host for this event before generating a meeting link — the link lives on
+            their Google Calendar and they are the organiser of the call.
+          </p>
+        ) : meetLink ? (
+          <>
+            <p className="text-muted-foreground">
+              Hosted by <span className="font-medium text-foreground">{host.name}</span>. This link
+              goes out with every pass.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={meetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="truncate rounded-md bg-muted px-2 py-1 font-mono text-xs"
+              >
+                {meetLink}
+              </a>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(meetLink);
+                  toast.success("Meeting link copied");
+                }}
+              >
+                Copy
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground">
+              No meeting link yet. One will be created on {host.name}&apos;s Google Calendar and
+              emailed to everyone with their pass.
+            </p>
+            <Button
+              size="sm"
+              disabled={generate.isPending}
+              onClick={() => generate.mutate(eventId)}
+            >
+              <Video className="size-4" />
+              {generate.isPending ? "Creating…" : "Generate meeting link"}
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -14,7 +14,7 @@ export default function NewEventPage() {
   const create = useCreateEvent();
 
   async function onSubmit(v: EventFormValues) {
-    /* the create endpoint doesn't take `status`; drop empty endTime */
+    /* the create endpoint doesn't take `status` */
     const payload: EventCreateValues = {
       name: v.name,
       slug: v.slug,
@@ -23,7 +23,8 @@ export default function NewEventPage() {
       /* datetime-local values are Kigali wall clock; pin the offset so the
          API stores the exact instant regardless of server TZ */
       startTime: kigaliInputToISO(v.startTime),
-      ...(v.endTime ? { endTime: kigaliInputToISO(v.endTime) } : {}),
+      /* required by the form now, so there is no empty case to skip */
+      endTime: kigaliInputToISO(v.endTime),
       gallery: v.gallery,
       organiser: v.organiser,
       maxAttendees: v.maxAttendees,
@@ -31,6 +32,8 @@ export default function NewEventPage() {
       rules: v.rules,
       price: v.price,
       location: v.location,
+      mode: v.mode,
+      ...(v.host ? { host: v.host } : {}),
       isPublished: v.isPublished,
     };
     const res = await create.mutateAsync(payload);

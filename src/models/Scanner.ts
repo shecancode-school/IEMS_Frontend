@@ -1,6 +1,15 @@
+/* LEGACY — retained for history only.
+
+   Standalone gate-device accounts were retired when sign-in became Google-only:
+   scanning is now a duty an administrator grants to a staff account (canScan),
+   so whoever works the door signs in as themselves and every check-in is
+   attributed to a real person. No new Scanner documents are created and these
+   accounts can no longer sign in; the collection stays so ScanLog rows written
+   before the change still name whoever performed the scan.
+*/
 import { Schema, model, models, type Model, type Types } from "mongoose";
 
-/* A Scanner account signs in on the gate device to check guests in. Created and
+/* A Scanner account used to sign in on the gate device to check guests in. Created and
    managed by an Admin; authenticates with email + password like an admin, but
    is a distinct role with a much narrower permission set. */
 export interface ScannerDoc {

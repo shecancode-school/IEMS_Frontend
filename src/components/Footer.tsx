@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Image from "next/image";
 import TornStrip from "./TornEdge";
 
@@ -65,6 +66,14 @@ export default function Footer() {
           <p className="text-sm text-cream-dim">
                 Monday - Friday, 8.30am – 5pm or by appointment
           </p>
+          {/* "or by appointment" was the only mention of booking anywhere on
+              the site, and it linked to nothing */}
+          <Link
+            href="/book"
+            className="mt-2 inline-block text-sm font-semibold text-orange transition-colors hover:text-orange-deep"
+          >
+            Book a conversation →
+          </Link>
         </div>
 
         {/* <div>

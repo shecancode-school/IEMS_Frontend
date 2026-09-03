@@ -6,6 +6,7 @@ import { issueTicket, CapacityError } from "@/lib/tickets";
 import { guestFiltersFrom, listGuestRows } from "@/lib/guestList";
 import { notifyAdmins } from "@/lib/notify";
 import { ok, fail, unauthorized } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 /* Admin: list guests, filterable by event / type / search. The same builder
    backs the CSV export so both stay in step. */
@@ -68,6 +69,13 @@ export async function POST(req: Request) {
       title: `Guest ticket issued to ${guest.name}`,
       body: `${event.name} · invited by an admin, ticket emailed to ${guest.email}.`,
       eventId: event._id,
+    });
+    await recordAudit({
+      actorId: admin.id,
+      req,
+      action: "guest.create",
+      target: { type: "guest", id: guest._id.toString(), label: guest.name },
+      summary: `Added ${guest.guestType} guest ${guest.name} <${guest.email}> and issued a pass`,
     });
     return ok({ guest: { id: guest._id, name: guest.name, ticketCode: ticket.code } }, 201);
   } catch (err) {

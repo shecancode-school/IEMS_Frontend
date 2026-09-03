@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { type VenueEvent } from "@/lib/events";
+import { type VenueEvent, isBookableEvent } from "@/lib/events";
 
 /* Clicking any event on the site funnels through here: the terms &
    conditions pop out first, and only after the visitor agrees do we
@@ -38,6 +38,14 @@ export function EventFlowProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const openEvent = useCallback((e: VenueEvent) => {
+    /* A session is not a ticketed event and must never open this flow.
+
+       Every call site is supposed to check isBookableEvent first, and Nav did
+       not — so clicking the "next up" chip when the next thing on the calendar
+       was a class opened a registration form for something with no tickets, no
+       capacity and no price. Guarding at the single choke point means a future
+       call site cannot reintroduce it. */
+    if (!isBookableEvent(e)) return;
     setAgreed(false);
     setEvent(e);
   }, []);

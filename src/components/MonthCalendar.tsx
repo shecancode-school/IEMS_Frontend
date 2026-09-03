@@ -1,138 +1,140 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, type PanInfo } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion, type PanInfo } from "motion/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { CATEGORY_COLORS, type VenueEvent } from "@/lib/events";
+import { todayIso } from "@/lib/events";
+import {
+  addDays,
+  addMonths,
+  clampMonth,
+  compareMonths,
+  groupByDay,
+  monthLabel,
+  monthMatrix,
+  monthName,
+  monthOf,
+  weekOf,
+  weekRangeLabel,
+  type YearMonth,
+} from "@/lib/calendarGrid";
+import type { VenueEvent } from "@/lib/events";
+import { PublicToolbar, type View } from "@/components/calendar/PublicToolbar";
+import { PublicMonthGrid } from "@/components/calendar/PublicMonthGrid";
+import { PublicAgenda } from "@/components/calendar/PublicAgenda";
+import { PublicWeekGrid } from "@/components/calendar/PublicWeekGrid";
+import { CalendarErrorState, CalendarSkeleton } from "@/components/calendar/PublicStates";
+import { BOARD } from "@/components/calendar/publicStyles";
+import type { CalendarPerson, CalendarSource } from "@/components/calendar/CalendarFilters";
+import { BookingAvailability } from "@/components/calendar/BookingAvailability";
+import { DayDetail } from "@/components/calendar/DayDetail";
 import { useEvents } from "@/lib/useEvents";
 import { useEventFlow } from "@/components/EventFlow";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/* The public calendar.
 
-type MonthTab = { year: number; month: number; label: string };
+   This file is the calendar's brain — data, state, keyboard, bounds — and
+   nothing else. The three views it can show are three components in
+   ./calendar, and they share their visual language through publicStyles.ts.
+   It used to be one 780-line file in which the month grid's markup sat six
+   levels deep inside two animation wrappers, and the week and month views had
+   independently drifted ideas of what "today" looks like. */
 
-/* Month tabs run from the current month through the last month that has
-   an event, so the board always covers the real schedule */
-function buildMonths(events: VenueEvent[]): MonthTab[] {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  let end = start;
-  for (const e of events) {
-    const d = new Date(`${e.date}T00:00:00`);
-    const m = new Date(d.getFullYear(), d.getMonth(), 1);
-    if (m > end) end = m;
-  }
-  const months: MonthTab[] = [];
-  const cursor = new Date(start);
-  while (cursor <= end && months.length < 12) {
-    months.push({
-      year: cursor.getFullYear(),
-      month: cursor.getMonth(),
-      label: cursor.toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      }),
-    });
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-  return months;
-}
+/* How far the board may roam.
 
-function iso(y: number, m: number, d: number) {
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-
-type Cell = { key: string; day: number; inMonth: boolean };
-
-function buildCells(year: number, month: number): Cell[] {
-  const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Monday start
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const weeks = Math.ceil((offset + daysInMonth) / 7);
-  const start = new Date(year, month, 1 - offset);
-  return Array.from({ length: weeks * 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    return {
-      key: iso(d.getFullYear(), d.getMonth(), d.getDate()),
-      day: d.getDate(),
-      inMonth: d.getMonth() === month,
-    };
-  });
-}
-
-type View = "calendar" | "upcoming";
-
-/* Placeholder board shown while the real events are being fetched */
-function BoardSkeleton() {
-  return (
-    <div
-      role="status"
-      aria-label="Loading events"
-      className="animate-pulse bg-panel"
-    >
-      {/* mobile: schedule rows */}
-      <ul className="sm:hidden">
-        {Array.from({ length: 4 }, (_, i) => (
-          <li
-            key={i}
-            className="flex gap-3 border-b border-line p-3 last:border-b-0"
-          >
-            <div className="flex w-11 shrink-0 flex-col items-center pt-1">
-              <span className="h-2.5 w-8 rounded bg-panel-2" />
-              <span className="mt-1 h-9 w-9 rounded-full bg-panel-2" />
-            </div>
-            <div className="flex-1">
-              <div className="h-14 rounded-lg bg-panel-2" />
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      {/* desktop: month grid */}
-      <div className="hidden sm:block">
-        <div className="grid grid-cols-7 bg-panel-2">
-          {WEEKDAYS.map((wd) => (
-            <div
-              key={wd}
-              className="label border-b border-line px-2 py-3 text-center text-xs font-semibold text-cream sm:text-sm"
-            >
-              {wd}
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7">
-          {Array.from({ length: 35 }, (_, i) => (
-            <div
-              key={i}
-              className="min-h-20 border-b border-r border-line bg-panel p-2 nth-[7n]:border-r-0 sm:min-h-28"
-            >
-              <div className="flex justify-end">
-                <span className="h-6 w-6 rounded-full bg-panel-2" />
-              </div>
-              {i % 4 === 1 && (
-                <div className="mt-2 h-5 rounded-md bg-panel-2" />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-      <span className="sr-only">Loading events…</span>
-    </div>
-  );
-}
+   These are not arbitrary: /api/events serves a fixed window either side of
+   today, and letting the arrows walk past it would show confidently empty
+   months that are not actually empty. Keep them in step with PAST_DAYS /
+   FUTURE_DAYS in src/app/api/events/route.ts. */
+const PAST_MONTHS = 6;
+const FUTURE_MONTHS = 12;
 
 export default function MonthCalendar() {
-  const [view, setView] = useState<View>("calendar");
-  const [index, setIndex] = useState(0);
-  const [direction, setDirection] = useState(1);
   const sectionRef = useRef<HTMLElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const { data, isPending, isError, refetch } = useEvents();
   const { openEvent } = useEventFlow();
+  /* Motion is decoration here, never information: with reduced motion on, the
+     month still changes, it just does not slide. */
+  const reduced = useReducedMotion() ?? false;
+
   const events = useMemo(() => data ?? [], [data]);
-  const months = useMemo(() => buildMonths(events), [events]);
+
+  const [sources, setSources] = useState<Set<CalendarSource>>(
+    () => new Set<CalendarSource>(["EVENT", "ACTIVITY"])
+  );
+  const [personKey, setPersonKey] = useState<string | null>(null);
+
+  /* Someone's calendar is identified by their booking slug where they have
+     one, and by their name otherwise. Two colleagues sharing a name and
+     neither taking bookings would merge — the public feed exposes nothing
+     finer, and inventing an id here would mean publishing one. */
+  const keyOf = (e: VenueEvent) => e.hostSlug ?? e.host;
+
+  /* Only people with something PUBLIC appear, so this control cannot reveal a
+     colleague who has published nothing. */
+  const people = useMemo<CalendarPerson[]>(() => {
+    const found = new Map<string, CalendarPerson>();
+    for (const e of events) {
+      const key = keyOf(e);
+      if (!key || !e.host) continue;
+      const existing = found.get(key);
+      if (existing) existing.count += 1;
+      else found.set(key, { key, name: e.host, slug: e.hostSlug, count: 1 });
+    }
+    return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [events]);
+
+  const counts = useMemo(
+    () => ({
+      EVENT: events.filter((e) => e.kind === "EVENT").length,
+      ACTIVITY: events.filter((e) => e.kind === "ACTIVITY").length,
+    }),
+    [events]
+  );
+
+  /* every view reads this, so a layer turned off is off everywhere */
+  const visible = useMemo(
+    () =>
+      events.filter(
+        (e) => sources.has(e.kind) && (personKey === null || keyOf(e) === personKey)
+      ),
+    [events, sources, personKey]
+  );
+
+  const selectedPerson = people.find((p) => p.key === personKey) ?? null;
+
+  const byDay = useMemo(() => groupByDay(visible), [visible]);
+
+  /* Today in KIGALI. The feed's dates are Kigali days, so deriving "today"
+     from the browser's clock would misplace the marker — and drop today's
+     events out of "Upcoming" — for anyone west of UTC. */
+  const todayKey = useMemo(() => todayIso(), []);
+  const todayMonth = useMemo(() => monthOf(todayKey), [todayKey]);
+
+  const bounds = useMemo(
+    () => ({
+      min: addMonths(todayMonth, -PAST_MONTHS),
+      max: addMonths(todayMonth, FUTURE_MONTHS),
+    }),
+    [todayMonth]
+  );
+
+  const [view, setView] = useState<View>("month");
+  const [cursor, setCursor] = useState<YearMonth>(todayMonth);
+  const [direction, setDirection] = useState(1);
+  /* the day the detail panel is showing; also the anchor for the week view */
+  const [selectedDay, setSelectedDay] = useState<string>(todayKey);
+  /* whether the visitor opened the panel themselves. On desktop the panel is
+     hidden until they do; on mobile it is always shown, because a 45px cell
+     cannot hold a chip and the panel IS the agenda. */
+  const [panelOpen, setPanelOpen] = useState(false);
+  /* roving tabindex: exactly one day cell is reachable by Tab */
+  const [focusDay, setFocusDay] = useState<string>(todayKey);
+  const shouldFocus = useRef(false);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -149,402 +151,313 @@ export default function MonthCalendar() {
     return () => ctx.revert();
   }, []);
 
-  const safeIndex = Math.min(index, months.length - 1);
-  const { year, month, label } = months[safeIndex];
-  const cells = buildCells(year, month);
-  const now = new Date();
-  const todayKey = iso(now.getFullYear(), now.getMonth(), now.getDate());
+  /* Move focus only when a key press asked for it, never on an ordinary
+     re-render — otherwise the page would yank itself to the grid on load. */
+  useEffect(() => {
+    if (!shouldFocus.current) return;
+    shouldFocus.current = false;
+    gridRef.current
+      ?.querySelector<HTMLElement>(`[data-day="${focusDay}"]`)
+      ?.focus({ preventScroll: true });
+  }, [focusDay]);
 
-  /* days of this month that have events, for the mobile schedule view */
-  const monthPrefix = iso(year, month, 1).slice(0, 8);
-  const eventDays = Array.from(
-    new Set(
-      events.filter((e) => e.date.startsWith(monthPrefix)).map((e) => e.date)
-    )
-  ).sort();
+  const cells = useMemo(() => monthMatrix(cursor.year, cursor.month), [cursor]);
+  /* An ARIA grid must nest grid > row > gridcell. The rows carry
+     `display: contents` so the seven-column CSS grid is unaffected — the
+     structure exists for assistive technology, not for layout. */
+  const weeks = useMemo(
+    () => Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7)),
+    [cells]
+  );
+  const weekDays = useMemo(() => weekOf(selectedDay), [selectedDay]);
 
-  const upcoming = events
-    .filter((e) => e.date >= todayKey)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const monthHasItems = useMemo(
+    () => cells.some((c) => c.inMonth && byDay.has(c.key)),
+    [cells, byDay]
+  );
 
-  const goMonth = (next: number) => {
-    setDirection(next > safeIndex ? 1 : -1);
-    setIndex(next);
+  const upcoming = useMemo(
+    () => visible.filter((e) => e.date >= todayKey),
+    [visible, todayKey]
+  );
+
+  /* The same window bounds both grids. In week view the check is on the week
+     the arrow would land on, not on the month cursor — otherwise the arrows
+     stay enabled and walk the week past the end of the feed while the month
+     label sits clamped at the boundary. */
+  const weekStepInRange = (delta: number) => {
+    const target = monthOf(addDays(selectedDay, delta * 7));
+    return compareMonths(target, bounds.min) >= 0 && compareMonths(target, bounds.max) <= 0;
   };
 
-  /* Swipe left/right anywhere on the panel to flip calendar <-> upcoming */
-  const onSwipe = (_: unknown, info: PanInfo) => {
-    if (Math.abs(info.offset.x) > 80) {
-      setView((v) => (v === "calendar" ? "upcoming" : "calendar"));
-    }
-  };
+  const canGoBack = view === "week" ? weekStepInRange(-1) : compareMonths(cursor, bounds.min) > 0;
+  const canGoForward = view === "week" ? weekStepInRange(1) : compareMonths(cursor, bounds.max) < 0;
+
+  const goToMonth = useCallback(
+    (next: YearMonth) => {
+      const clamped = clampMonth(next, bounds.min, bounds.max);
+      setDirection(compareMonths(clamped, cursor) >= 0 ? 1 : -1);
+      setCursor(clamped);
+      return clamped;
+    },
+    [bounds, cursor]
+  );
+
+  /* One control pair drives both grids: in month view the arrows step a month,
+     in week view they step a week — which is what the label says they do. */
+  const step = useCallback(
+    (delta: number) => {
+      if (view === "week") {
+        const next = addDays(selectedDay, delta * 7);
+        const target = monthOf(next);
+        if (compareMonths(target, bounds.min) < 0 || compareMonths(target, bounds.max) > 0) return;
+        setDirection(delta);
+        setSelectedDay(next);
+        setFocusDay(next);
+        setCursor(target);
+        return;
+      }
+      goToMonth(addMonths(cursor, delta));
+    },
+    [view, selectedDay, cursor, goToMonth, bounds]
+  );
+
+  const goToday = useCallback(() => {
+    goToMonth(todayMonth);
+    setSelectedDay(todayKey);
+    setFocusDay(todayKey);
+  }, [goToMonth, todayMonth, todayKey]);
+
+  const toggleSource = useCallback((s: CalendarSource) => {
+    setSources((current) => {
+      const next = new Set(current);
+      /* never let both go off — an empty board looks broken rather than
+         filtered, and there is no affordance saying why it is blank */
+      if (next.has(s) && next.size === 1) return current;
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  }, []);
+
+  const selectDay = useCallback((dayISO: string) => {
+    setSelectedDay(dayISO);
+    setFocusDay(dayISO);
+    setPanelOpen(true);
+  }, []);
+
+  /* Arrow keys walk the grid a day at a time, exactly as a native date picker
+     does; the month follows the cursor when it walks off the edge. Without
+     this the calendar is unusable without a mouse. */
+  const onGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const moves: Record<string, number> = {
+        ArrowLeft: -1,
+        ArrowRight: 1,
+        ArrowUp: -7,
+        ArrowDown: 7,
+      };
+
+      let next: string | null = null;
+      if (e.key in moves) next = addDays(focusDay, moves[e.key]);
+      else if (e.key === "Home") next = weekOf(focusDay)[0];
+      else if (e.key === "End") next = weekOf(focusDay)[6];
+      else if (e.key === "PageUp" || e.key === "PageDown") {
+        const delta = e.key === "PageUp" ? -1 : 1;
+        const target = clampMonth(addMonths(monthOf(focusDay), delta), bounds.min, bounds.max);
+        /* keep the day-of-month where possible; monthMatrix will simply not
+           contain it for a short month, so fall back to the 1st */
+        const candidate = `${target.year}-${String(target.month + 1).padStart(2, "0")}-${focusDay.slice(8)}`;
+        next = monthOf(candidate).month === target.month ? candidate : `${candidate.slice(0, 8)}01`;
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectDay(focusDay);
+        return;
+      } else if (e.key === "Escape") {
+        setPanelOpen(false);
+        return;
+      } else {
+        return;
+      }
+
+      e.preventDefault();
+      const target = monthOf(next);
+      if (compareMonths(target, bounds.min) < 0 || compareMonths(target, bounds.max) > 0) return;
+
+      shouldFocus.current = true;
+      setFocusDay(next);
+      if (compareMonths(target, cursor) !== 0) goToMonth(target);
+    },
+    [focusDay, cursor, bounds, goToMonth, selectDay]
+  );
+
+  /* Swipe navigates time, the way every calendar app does. It used to flip
+     between views, which meant a horizontal drag did the one thing a calendar
+     never does with one. */
+  const onSwipe = useCallback(
+    (_: unknown, info: PanInfo) => {
+      if (Math.abs(info.offset.x) > 80) step(info.offset.x < 0 ? 1 : -1);
+    },
+    [step]
+  );
+
+  /* The period, in two weights: the part that changes as you navigate, and the
+     year behind it. */
+  const period = useMemo(() => {
+    if (view === "upcoming") return { label: "Upcoming", year: "" };
+    if (view === "week") return weekRangeLabel(weekDays[0], weekDays[6]);
+    return { label: monthName(cursor), year: String(cursor.year) };
+  }, [view, cursor, weekDays]);
+
+  const selectedItems = byDay.get(selectedDay) ?? [];
+  const ready = !isPending && !isError;
+
+  /* Swipe belongs to the grids, not to the agenda: a horizontal drag on a
+     vertical list of events has no meaning, and catching it there stole the
+     gesture from the browser's own back navigation. */
+  const dragProps =
+    view === "upcoming" || reduced
+      ? {}
+      : {
+          drag: "x" as const,
+          dragConstraints: { left: 0, right: 0 },
+          dragElastic: 0.06,
+          dragDirectionLock: true,
+          onDragEnd: onSwipe,
+        };
 
   return (
-    <section id="calendar" ref={sectionRef} className="bg-bg py-16 sm:py-20">
-      <div className="mx-auto max-w-6xl px-5">
-        <div className="reveal mb-6 flex flex-wrap items-center justify-between gap-4">
-          <h2 className="display text-3xl text-cream sm:text-4xl">
-            {view === "calendar" ? label : "Upcoming events"}
-          </h2>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* view switch */}
-            <div
-              role="group"
-              aria-label="Switch between calendar and upcoming events"
-              className="flex rounded-lg border border-line bg-panel p-1"
-            >
-              {(
-                [
-                  ["calendar", "Calendar"],
-                  ["upcoming", "Upcoming"],
-                ] as [View, string][]
-              ).map(([value, text]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setView(value)}
-                  aria-pressed={view === value}
-                  className={`relative rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-                    view === value ? "text-bg" : "text-cream hover:text-orange"
-                  }`}
-                >
-                  {view === value && (
-                    <motion.span
-                      layoutId="view-pill"
-                      className="absolute inset-0 rounded-md bg-orange"
-                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    />
-                  )}
-                  <span className="relative">{text}</span>
-                </button>
-              ))}
-            </div>
-
-            {view === "calendar" && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => goMonth(0)}
-                  className="rounded-lg border border-line bg-panel px-4 py-2 text-sm font-medium text-cream transition-colors hover:border-orange hover:text-orange"
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goMonth(safeIndex - 1)}
-                  disabled={safeIndex === 0}
-                  aria-label="Previous month"
-                  className="rounded-lg border border-line bg-panel px-3.5 py-2 text-cream transition-colors enabled:hover:border-orange enabled:hover:text-orange disabled:opacity-40"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goMonth(safeIndex + 1)}
-                  disabled={safeIndex >= months.length - 1}
-                  aria-label="Next month"
-                  className="rounded-lg border border-line bg-panel px-3.5 py-2 text-cream transition-colors enabled:hover:border-orange enabled:hover:text-orange disabled:opacity-40"
-                >
-                  ›
-                </button>
-              </div>
-            )}
-          </div>
+    <section id="calendar" ref={sectionRef} className="bg-bg py-10 sm:py-14">
+      <div className="mx-auto max-w-360 px-3 sm:px-5 lg:px-6">
+        <div className="reveal">
+          <PublicToolbar
+            heading={period.label}
+            subheading={period.year || undefined}
+            view={view}
+            onView={setView}
+            onPrev={() => step(-1)}
+            onNext={() => step(1)}
+            onToday={goToday}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            stepLabel={view === "week" ? "week" : "month"}
+            showNav={view !== "upcoming"}
+            filters={
+              ready
+                ? {
+                    sources,
+                    counts,
+                    onToggleSource: toggleSource,
+                    people,
+                    personKey,
+                    onPerson: setPersonKey,
+                  }
+                : null
+            }
+          />
         </div>
 
-        <div className="reveal overflow-hidden rounded-xl border border-line">
+        <div className={`reveal ${BOARD}`}>
           {isPending ? (
-            <BoardSkeleton />
+            <CalendarSkeleton view={view} />
           ) : isError ? (
-            <div className="flex flex-col items-center gap-4 bg-panel px-5 py-14 text-center">
-              <p className="text-sm text-cream-dim">
-                Couldn&apos;t load the events. Please try again.
-              </p>
-              <button
-                type="button"
-                onClick={() => refetch()}
-                className="rounded-lg border border-line bg-panel-2 px-4 py-2 text-sm font-medium text-cream transition-colors hover:border-orange hover:text-orange"
-              >
-                Retry
-              </button>
-            </div>
+            <CalendarErrorState onRetry={() => refetch()} />
           ) : (
-          <AnimatePresence mode="wait" initial={false}>
-            {view === "calendar" ? (
-              <motion.div
-                key="calendar"
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.12}
-                onDragEnd={onSwipe}
-                initial={{ opacity: 0, x: 60 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -60 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-                className="cursor-grab active:cursor-grabbing"
-              >
-                {/* mobile: schedule view, like Google Calendar */}
-                <div className="bg-panel sm:hidden">
-                  {eventDays.length === 0 && (
-                    <p className="px-5 py-10 text-center text-sm text-cream-dim">
-                      No events this month yet.
-                    </p>
-                  )}
-                  <ul>
-                    {eventDays.map((dayKey) => {
-                      const d = new Date(`${dayKey}T00:00:00`);
-                      const isToday = dayKey === todayKey;
-                      const dayEvents = events.filter(
-                        (e) => e.date === dayKey
-                      );
-                      return (
-                        <li
-                          key={dayKey}
-                          className="flex gap-3 border-b border-line p-3 last:border-b-0"
-                        >
-                          <div className="flex w-11 shrink-0 flex-col items-center pt-1">
-                            <span className="label text-[10px] font-semibold text-cream-dim">
-                              {d
-                                .toLocaleDateString("en-US", {
-                                  weekday: "short",
-                                })
-                                .toUpperCase()}
-                            </span>
-                            <span
-                              className={`mt-1 flex h-9 w-9 items-center justify-center rounded-full text-base font-bold ${
-                                isToday
-                                  ? "bg-orange text-bg"
-                                  : "bg-panel-2 text-cream"
-                              }`}
-                            >
-                              {d.getDate()}
-                            </span>
-                          </div>
-                          <div className="flex min-w-0 flex-1 flex-col gap-2">
-                            {dayEvents.map((event) => (
-                              <button
-                                key={event.id}
-                                type="button"
-                                onClick={() => openEvent(event)}
-                                className="block w-full cursor-pointer rounded-lg px-3.5 py-2.5 text-left text-bg"
-                                style={{
-                                  backgroundColor:
-                                    CATEGORY_COLORS[event.category],
-                                }}
-                              >
-                                <span className="block text-sm font-bold leading-snug">
-                                  {event.title}
-                                </span>
-                                <span className="block text-xs font-medium opacity-80">
-                                  {event.time} at {event.space} ·{" "}
-                                  {event.soldOut ? "Sold out" : event.price}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-
-                {/* desktop: full month grid */}
-                <div className="hidden sm:block">
-                <div className="grid grid-cols-7 bg-panel-2">
-                  {WEEKDAYS.map((wd) => (
-                    <div
-                      key={wd}
-                      className="label border-b border-line px-2 py-3 text-center text-xs font-semibold text-cream sm:text-sm"
-                    >
-                      {wd}
-                    </div>
-                  ))}
-                </div>
-
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={label}
-                    initial={{ opacity: 0, x: 40 * direction }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -40 * direction }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="grid grid-cols-7"
-                  >
-                    {cells.map((cell) => {
-                      const dayEvents = events.filter(
-                        (e) => e.date === cell.key
-                      );
-                      const isToday = cell.key === todayKey;
-                      return (
-                        <div
-                          key={cell.key}
-                          className={`min-h-20 border-b border-r border-line p-1.5 nth-[7n]:border-r-0 sm:min-h-28 sm:p-2 ${
-                            cell.inMonth ? "bg-panel" : "bg-bg"
-                          }`}
-                        >
-                          <div className="mb-1 flex justify-end">
-                            <span
-                              className={`flex h-6 w-6 items-center justify-center rounded-full text-xs sm:text-sm ${
-                                isToday
-                                  ? "bg-orange font-bold text-bg"
-                                  : cell.inMonth
-                                    ? "text-cream"
-                                    : "text-cream-dim/50"
-                              }`}
-                            >
-                              {cell.day}
-                            </span>
-                          </div>
-                          {dayEvents.map((event) => (
-                            <motion.button
-                              key={event.id}
-                              type="button"
-                              onClick={() => openEvent(event)}
-                              whileHover={{ scale: 1.04 }}
-                              title={`${event.title} — ${event.time}, ${
-                                event.space
-                              }. ${event.soldOut ? "Sold out" : event.price}`}
-                              className="mb-1 block w-full cursor-pointer overflow-hidden rounded-md px-1.5 py-1 text-left text-[10px] font-semibold leading-tight wrap-break-word text-bg sm:text-xs"
-                              style={{
-                                backgroundColor:
-                                  CATEGORY_COLORS[event.category],
-                              }}
-                            >
-                              <span className="hidden sm:inline">
-                                {event.time} ·{" "}
-                              </span>
-                              {event.title}
-                              {event.soldOut && (
-                                <span className="ml-1 opacity-70">
-                                  (Sold out)
-                                </span>
-                              )}
-                            </motion.button>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </motion.div>
-                </AnimatePresence>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.ul
-                key="upcoming"
-                drag="x"
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.12}
-                onDragEnd={onSwipe}
-                initial={{ opacity: 0, x: 60 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -60 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-                className="cursor-grab bg-panel active:cursor-grabbing"
-              >
-                {upcoming.length === 0 && (
-                  <li className="px-5 py-10 text-center text-sm text-cream-dim">
-                    No upcoming events yet — check back soon.
-                  </li>
-                )}
-                {upcoming.map((event) => {
-                  const d = new Date(`${event.date}T00:00:00`);
-                  const day = d.getDate();
-                  const monthName = d.toLocaleDateString("en-US", {
-                    month: "short",
-                  });
-                  const weekday = d.toLocaleDateString("en-US", {
-                    weekday: "short",
-                  });
-                  return (
-                    <li
-                      key={event.id}
-                      className="border-b border-line last:border-b-0"
-                      style={{
-                        boxShadow: `inset 4px 0 0 ${
-                          CATEGORY_COLORS[event.category]
-                        }`,
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openEvent(event)}
-                        className="grid w-full cursor-pointer grid-cols-[64px_1fr] items-center gap-4 px-4 py-4 text-left transition-colors hover:bg-panel-2 sm:grid-cols-[80px_1fr_auto] sm:px-6"
-                      >
-                        <span className="text-center">
-                          <span className="display block text-2xl leading-none text-orange sm:text-3xl">
-                            {day}
-                          </span>
-                          <span className="label block text-[10px] font-semibold text-cream-dim">
-                            {monthName} · {weekday}
-                          </span>
-                        </span>
-                        <span>
-                          <span className="mb-0.5 flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{
-                                backgroundColor:
-                                  CATEGORY_COLORS[event.category],
-                              }}
-                            />
-                            <span className="label text-[11px] font-semibold text-cream-dim">
-                              {event.category}
-                            </span>
-                          </span>
-                          <span className="block font-semibold text-cream">
-                            {event.title}
-                          </span>
-                          <span className="text-sm text-cream-dim">
-                            {event.time} · {event.space}
-                          </span>
-                        </span>
-                        <span className="col-span-2 justify-self-start sm:col-span-1 sm:justify-self-end">
-                          {event.soldOut ? (
-                            <span className="rounded-full bg-panel-2 px-4 py-1.5 text-xs font-semibold text-cream-dim">
-                              Sold out
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-orange px-4 py-1.5 text-xs font-semibold text-bg">
-                              {event.price}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </motion.ul>
-            )}
-          </AnimatePresence>
+            /* Keyed on the view so React swaps the subtree, with a short fade
+               in and no exit. An AnimatePresence with mode="wait" here meant
+               every view change spent 350ms showing nothing at all — the one
+               thing the brief asks a calendar not to feel like. */
+            <motion.div
+              key={view}
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.14 }}
+              {...dragProps}
+            >
+              {view === "month" ? (
+                <PublicMonthGrid
+                  gridRef={gridRef}
+                  label={monthLabel(cursor)}
+                  weeks={weeks}
+                  byDay={byDay}
+                  todayKey={todayKey}
+                  selectedDay={panelOpen ? selectedDay : null}
+                  focusDay={focusDay}
+                  hasItems={monthHasItems}
+                  direction={direction}
+                  reduced={reduced}
+                  onSelectDay={selectDay}
+                  onFocusDay={setFocusDay}
+                  onKeyDown={onGridKeyDown}
+                  onOpen={openEvent}
+                />
+              ) : view === "week" ? (
+                <PublicWeekGrid
+                  days={weekDays}
+                  byDay={byDay}
+                  todayKey={todayKey}
+                  selectedDay={panelOpen ? selectedDay : null}
+                  onSelectDay={selectDay}
+                  onOpen={openEvent}
+                />
+              ) : (
+                <PublicAgenda items={upcoming} todayKey={todayKey} onOpen={openEvent} />
+              )}
+            </motion.div>
           )}
         </div>
 
-        <div className="reveal mt-4 flex items-center justify-between gap-4">
-          <p className="text-xs text-cream-dim">
-            Swipe the board or use the toggle to flip between the calendar
-            and the upcoming events list.
+        {/* Day details */}
+        {view !== "upcoming" && ready && (
+          <>
+            <div className="mt-3 sm:hidden">
+              <DayDetail
+                dayISO={selectedDay}
+                items={selectedItems}
+                isToday={selectedDay === todayKey}
+                onOpen={openEvent}
+              />
+            </div>
+
+            {/* On desktop the panel is hidden until a day is chosen, so the
+                first selection used to shove everything below it down the
+                page. A minimum height reserves the room the panel will take,
+                and until then it holds the line that says how to open it. */}
+            <div className="mt-3 hidden min-h-14 sm:block">
+              <DayDetail
+                dayISO={panelOpen ? selectedDay : null}
+                items={selectedItems}
+                isToday={selectedDay === todayKey}
+                onOpen={openEvent}
+                onClose={() => setPanelOpen(false)}
+              />
+              {!panelOpen && (
+                <p className="flex items-center gap-2 rounded-xl border border-dashed border-line px-4 py-3.5 text-xs text-cream-dim">
+                  Select a day to see what is on it — click a cell, or use the arrow keys and
+                  press Enter.
+                </p>
+              )}
+            </div>
+
+            {selectedPerson?.slug && (
+              <BookingAvailability
+                slug={selectedPerson.slug}
+                name={selectedPerson.name}
+                dayISO={selectedDay}
+              />
+            )}
+          </>
+        )}
+
+        {/* The hint used to be printed here AND in the toolbar at lg, so on a
+            wide screen the visitor was told twice, in two different wordings.
+            It is only shown where the toolbar's copy is not: below lg. */}
+        {view !== "upcoming" && (
+          <p className="reveal mt-3 text-xs text-cream-dim lg:hidden">
+            Select a day for details. Use the arrow keys to move around the grid, or swipe
+            on a touch screen.
           </p>
-          {/* add an event from outside the board, Google Calendar style */}
-          {/* <a
-            href="mailto:info@igirerwanda.org?subject=Add my event to the Igire Rwanda calendar"
-            className="flex shrink-0 items-center gap-2 rounded-full bg-orange py-3 pl-4 pr-5 text-sm font-semibold text-bg shadow-[0_10px_24px_-8px_rgba(224,138,0,0.6)] transition-colors hover:bg-orange-deep"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Add your event
-          </a> */}
-        </div>
+        )}
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { uploadImage, InvalidImageError } from "@/lib/cloudinary";
 import { ok, fail, unauthorized } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -20,6 +21,13 @@ export async function POST(req: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   try {
     const url = await uploadImage(buffer, folder);
+    await recordAudit({
+      actorId: admin.id,
+      req,
+      action: "upload.create",
+      target: { type: "upload", id: "", label: url },
+      summary: "Uploaded an image",
+    });
     return ok({ url });
   } catch (err) {
     if (err instanceof InvalidImageError) return fail(err.message);

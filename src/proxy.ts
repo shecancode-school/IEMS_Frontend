@@ -9,16 +9,23 @@ import { NextResponse, type NextRequest } from "next/server";
 type Window = { count: number; resetAt: number };
 const buckets = new Map<string, Window>();
 
-/* per-path-prefix limits: [max requests, window ms]. Password logins get a
-   tight budget over a long window — brute-forcing an admin/scanner password is
-   the highest-value attack, so 5 tries per 15 min per IP. The magic-link flow
-   is passwordless, so its budget is looser. */
-const LIMITS: { prefix: string; max: number; windowMs: number }[] = [
-  { prefix: "/api/admin/login", max: 5, windowMs: 15 * 60_000 },
-  { prefix: "/api/scanner/login", max: 5, windowMs: 15 * 60_000 },
+/* per-path-prefix limits: [max requests, window ms].
+
+   There are no password logins left to brute-force — staff sign in with Google
+   and attendees use magic links — so what is protected here is the endpoints
+   that send mail, mint sessions or write on behalf of an anonymous caller. */
+const LIMITS: { prefix: string; method?: string; max: number; windowMs: number }[] = [
   { prefix: "/api/auth/request-link", max: 5, windowMs: 60_000 },
   { prefix: "/api/auth/verify", max: 10, windowMs: 60_000 },
   { prefix: "/api/auth/refresh", max: 20, windowMs: 60_000 },
+  /* public booking is unauthenticated and writes to the database, so writes get
+     a tight budget while browsing slots stays comfortable */
+  { prefix: "/api/book", method: "POST", max: 5, windowMs: 60_000 },
+  { prefix: "/api/book", max: 30, windowMs: 60_000 },
+  { prefix: "/api/admin/google/connect", max: 10, windowMs: 60_000 },
+  /* an anonymous form that writes to the database and pings administrators —
+     a tight budget keeps it from becoming a notification firehose */
+  { prefix: "/api/public/api-keys/request", max: 3, windowMs: 60 * 60_000 },
 ];
 
 function clientIp(req: NextRequest): string {
@@ -33,10 +40,14 @@ function clientIp(req: NextRequest): string {
 
 export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  const rule = LIMITS.find((l) => path.startsWith(l.prefix));
+  /* method-specific rules are listed first and win, so POST /api/book gets the
+     tight write budget rather than the looser browse one */
+  const rule = LIMITS.find(
+    (l) => path.startsWith(l.prefix) && (!l.method || l.method === req.method)
+  );
   if (!rule) return NextResponse.next();
 
-  const key = `${rule.prefix}:${clientIp(req)}`;
+  const key = `${rule.prefix}:${rule.method ?? "*"}:${clientIp(req)}`;
   const now = Date.now();
   const win = buckets.get(key);
 
@@ -59,10 +70,11 @@ export function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/api/admin/login",
-    "/api/scanner/login",
     "/api/auth/request-link",
     "/api/auth/verify",
     "/api/auth/refresh",
+    "/api/book/:path*",
+    "/api/admin/google/connect",
+    "/api/public/api-keys/request",
   ],
 };

@@ -18,7 +18,7 @@ try {
 }
 
 import type { HydratedDocument } from "mongoose";
-import { Admin, Participant, Event, Scanner, type EventDoc } from "../src/models";
+import { Admin, Availability, Participant, Event, type EventDoc } from "../src/models";
 import { uploadImage } from "../src/lib/cloudinary";
 
 /* Build a deterministic diagonal-gradient PNG cover for an event, entirely in
@@ -210,6 +210,62 @@ function requireSecret(name: string, { minLength = 1 }: { minLength?: number } =
   return value;
 }
 
+
+/* Optional demo staff so the org calendar and the booking pages have more than
+   one person in them locally. Opt-in — a production reseed must not invent
+   accounts. Set SEED_DEMO_STAFF=1 and DEMO_STAFF_PASSWORD to use it. */
+async function seedDemoStaff(createdBy: mongoose.Types.ObjectId) {
+  if (process.env.SEED_DEMO_STAFF !== "1") return;
+  const password = requireSecret("DEMO_STAFF_PASSWORD", { minLength: 8 });
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const people = [
+    { name: "Demo CEO", email: "ceo@example.test", role: "CEO" as const, title: "Chief Executive" },
+    {
+      name: "Demo Facilitator",
+      email: "facilitator@example.test",
+      role: "FACILITATOR" as const,
+      title: "Lead Facilitator, SheCanCODE",
+    },
+    {
+      name: "Demo Academic",
+      email: "academic@example.test",
+      role: "ACADEMIC" as const,
+      title: "Academic Coordinator",
+    },
+  ];
+
+  for (const p of people) {
+    await Admin.findOneAndUpdate(
+      { email: p.email },
+      { $setOnInsert: { ...p, passwordHash, createdBy } },
+      { upsert: true }
+    );
+  }
+  console.log(`demo staff: ${people.map((p) => p.email).join(", ")}`);
+}
+
+
+/* A bookable profile for the super admin, so /book has something to show on a
+   fresh install. $setOnInsert only — a reseed must not undo someone's real
+   availability settings. */
+async function seedAvailability(admin: { _id: mongoose.Types.ObjectId; name: string }) {
+  await Availability.findOneAndUpdate(
+    { admin: admin._id },
+    {
+      $setOnInsert: {
+        admin: admin._id,
+        bookable: false,
+        slug: admin.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "admin",
+        headline: "",
+        bio: "",
+        weekly: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, start: "09:00", end: "17:00" })),
+      },
+    },
+    { upsert: true }
+  );
+}
+
 async function main() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set");
@@ -232,30 +288,17 @@ async function main() {
     },
     { upsert: true, returnDocument: "after" }
   );
-  /* normalise the role for admins seeded under the old two-role schema */
-  if (superAdmin.role !== "ADMIN") {
-    await Admin.updateOne({ _id: superAdmin._id }, { role: "ADMIN" });
-  }
-  console.log(`super admin: ${superAdmin.email}`);
+  /* NOTE: the role is deliberately NOT normalised on reseed. Roles are now
+     meaningful (ADMIN | CEO | FACILITATOR | ACADEMIC | STAFF) and a reseed
+     must not demote an account that was promoted in the console. */
+  console.log(`super admin: ${superAdmin.email} (${superAdmin.role})`);
+  await seedDemoStaff(superAdmin._id);
+  await seedAvailability(superAdmin);
 
-  /* a scanner account for the gate device (email + password login). It gets its
-     OWN password — never the admin's — so a gate device can't be used to log in
-     as an administrator. */
-  const scannerEmail = (process.env.SCANNER_EMAIL ?? "scanner@igirerwanda.org").toLowerCase();
-  const scannerPassword = requireSecret("SCANNER_PASSWORD", { minLength: 8 });
-  const scanner = await Scanner.findOneAndUpdate(
-    { email: scannerEmail },
-    {
-      $setOnInsert: {
-        name: process.env.SCANNER_NAME ?? "Gate Scanner",
-        email: scannerEmail,
-        passwordHash: await bcrypt.hash(scannerPassword, 10),
-        createdBy: superAdmin._id,
-      },
-    },
-    { upsert: true, returnDocument: "after" }
-  );
-  console.log(`scanner: ${scanner.email}`);
+  /* No gate-device account is seeded any more. Sign-in is Google-only, and
+     scanning is a duty an administrator grants to a staff account (canScan),
+     so whoever works the door signs in as themselves and every check-in is
+     attributed to a real person in the audit log. */
 
   /* the graduation — participants only, so it stays off the public calendar */
   const event = await Event.findOneAndUpdate(

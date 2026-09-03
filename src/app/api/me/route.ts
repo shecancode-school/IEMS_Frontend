@@ -5,6 +5,7 @@ import { requireAttendee } from "@/lib/auth";
 import { ticketQrDataUrl } from "@/lib/qr";
 import { roleLine } from "@/lib/tickets";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
+import { programmeBlockedReason } from "@/lib/programme";
 
 export async function GET(req: Request) {
   const participantId = await requireAttendee(req);
@@ -19,6 +20,17 @@ export async function GET(req: Request) {
     Ticket.findOne({ holderType: "Participant", holderId: participant._id }),
     Guest.findOne({ inviter: participant._id }),
   ]);
+
+  /* A session token is not on its own a right of entry: it says who you are,
+     not that there is anything to attend. If the programme behind it is a
+     draft, unpublished or archived, the pass it would show is not valid for
+     anything, so the dashboard is closed rather than rendering a ticket for an
+     event that is not happening. The message is deliberately specific — "come
+     back later" is actionable, "Forbidden" is not. */
+  const blocked = programmeBlockedReason(event);
+  if (blocked) {
+    return fail(`${blocked} Your pass will be available here once it is live again.`, 403);
+  }
 
   /* the plus-one's Guest record is deleted when they check in at the gate, so a
      live lookup goes empty even though they attended. Fall back to the archived

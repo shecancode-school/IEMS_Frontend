@@ -6,21 +6,30 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Bell,
+  CalendarClock,
   CalendarDays,
+CalendarRange,
+  Clock,
+  Contact,
   FileCode,
+  KeyRound,
   Globe,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
   Mail,
   PlusCircle,
+  Link2,
   ScanLine,
-  ShieldCheck,
+  ScrollText,
   Ticket,
   UserPlus,
   Users,
+  Users2,
 } from "lucide-react";
 import { useAdminAuth } from "@/context/AuthContext";
+import { useCan } from "@/hooks/admin/staff";
+import type { Capability } from "@/types/admin";
 import {
   Sidebar,
   SidebarContent,
@@ -47,32 +56,69 @@ import {
 const NAV_ITEM =
   "font-medium transition-[transform,background-color,color] duration-200 hover:translate-x-0.5 [&>svg]:transition-transform [&>svg]:duration-200 hover:[&>svg]:scale-110";
 
-const MAIN = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/events", label: "Events", icon: CalendarDays },
-  { href: "/admin/attendees", label: "Participants", icon: Users },
-  { href: "/admin/guests", label: "Guests", icon: UserPlus },
-  { href: "/admin/tickets", label: "Tickets", icon: Ticket },
-  { href: "/admin/scanners", label: "Scanners", icon: ShieldCheck },
+/* `cap` gates the item: omitted means everyone with a staff account sees it.
+   This is presentation only — every route re-checks server-side, so hiding a
+   link is a convenience, never the security boundary. */
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  cap?: Capability;
+};
+
+const MAIN: NavItem[] = [
+  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard, cap: "events:write" },
+  { href: "/admin/calendar", label: "Calendar", icon: CalendarRange },
+  { href: "/admin/calendar/me", label: "My schedule", icon: CalendarClock },
+  { href: "/admin/events", label: "Events", icon: CalendarDays, cap: "events:write" },
+  { href: "/admin/attendees", label: "Participants", icon: Users, cap: "attendees:write" },
+  { href: "/admin/guests", label: "Guests", icon: UserPlus, cap: "attendees:write" },
+  { href: "/admin/tickets", label: "Tickets", icon: Ticket, cap: "tickets:write" },
+  { href: "/admin/staff", label: "Staff", icon: Users2, cap: "calendar:viewAll" },
+  { href: "/admin/directory", label: "Directory", icon: Contact, cap: "calendar:viewAll" },
 ];
 
-const OPERATIONS = [
-  { href: "/admin/scan", label: "Scan tickets", icon: ScanLine },
-  { href: "/admin/emails", label: "Emails", icon: Mail },
-  { href: "/admin/notifications", label: "Notifications", icon: Bell },
-  { href: "/admin/status", label: "API status", icon: Activity },
+const OPERATIONS: NavItem[] = [
+  { href: "/admin/bookings", label: "Bookings", icon: Clock, cap: "bookings:host" },
+  { href: "/admin/scan", label: "Scan tickets", icon: ScanLine, cap: "tickets:write" },
+  { href: "/admin/emails", label: "Emails", icon: Mail, cap: "emails:send" },
+  { href: "/admin/notifications", label: "Notifications", icon: Bell, cap: "events:write" },
+  { href: "/admin/status", label: "API status", icon: Activity, cap: "events:write" },
+  { href: "/admin/audit", label: "Audit log", icon: ScrollText, cap: "staff:manage" },
 ];
 
-const SECONDARY = [
-  { href: "/admin/api-docs", label: "API docs", icon: FileCode },
+const SECONDARY: NavItem[] = [
+  { href: "/admin/settings/availability", label: "Availability", icon: Clock, cap: "bookings:host" },
+  { href: "/admin/settings/google", label: "Google Calendar", icon: Link2 },
+  { href: "/admin/api-keys", label: "API keys", icon: KeyRound, cap: "staff:manage" },
+  { href: "/admin/api-docs", label: "API docs", icon: FileCode, cap: "events:write" },
   { href: "/", label: "Public site", icon: Globe },
   { href: "mailto:support@igirerwanda.org", label: "Get help", icon: LifeBuoy },
 ];
 
+const NAV_HREFS = [...MAIN, ...OPERATIONS, ...SECONDARY].map((i) => i.href);
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { user, logout } = useAdminAuth();
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const allow = useCan(user?.role, !!user);
+  const visible = (items: NavItem[]) => items.filter((i) => !i.cap || allow(i.cap));
+  const main = visible(MAIN);
+  const operations = visible(OPERATIONS);
+  const secondary = visible(SECONDARY);
+  /* "New event" is the sidebar's quick action, but a facilitator-only account
+     has no events:write — show them the calendar action instead */
+  const canCreateEvents = allow("events:write");
+  /* Nested entries like /admin/calendar and /admin/calendar/me both prefix-match
+     the child route, so the parent would light up alongside the child. The most
+     specific matching nav href wins. */
+  const isActive = (href: string) => {
+    if (pathname === href) return true;
+    if (!pathname.startsWith(`${href}/`)) return false;
+    return !NAV_HREFS.some(
+      (h) => h !== href && h.startsWith(`${href}/`) && (pathname === h || pathname.startsWith(`${h}/`))
+    );
+  };
   const initials = (user?.name ?? "A")
     .split(" ")
     .map((w) => w[0])
@@ -105,12 +151,12 @@ export function AppSidebar() {
               <SidebarMenuItem className="flex items-center gap-2">
                 <SidebarMenuButton
                   asChild
-                  tooltip="New event"
+                  tooltip={canCreateEvents ? "New event" : "New activity"}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 duration-200 ease-linear"
                 >
-                  <Link href="/admin/events/new">
+                  <Link href={canCreateEvents ? "/admin/events/new" : "/admin/calendar?new=1"}>
                     <PlusCircle />
-                    <span>New event</span>
+                    <span>{canCreateEvents ? "New event" : "New activity"}</span>
                   </Link>
                 </SidebarMenuButton>
                 {/* <Button asChild size="icon" variant="outline" className="size-8 shrink-0 group-data-[collapsible=icon]:opacity-0">
@@ -126,7 +172,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1.5">
-              {MAIN.map((item) => (
+              {main.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild isActive={isActive(item.href)} tooltip={item.label} className={NAV_ITEM}>
                     <Link href={item.href}>
@@ -144,7 +190,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Operations</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1.5">
-              {OPERATIONS.map((item) => (
+              {operations.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild isActive={isActive(item.href)} tooltip={item.label} className={NAV_ITEM}>
                     <Link href={item.href}>
@@ -161,7 +207,7 @@ export function AppSidebar() {
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
-              {SECONDARY.map((item) => (
+              {secondary.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     asChild

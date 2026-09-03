@@ -43,7 +43,8 @@ export function publishNotification(event: NotificationEvent) {
 
 /* content channel: fired whenever events change (created, edited, poster
    uploaded) so public pages and admin views can re-pull live */
-export type ContentScope = "events";
+/* which cached surface changed, so listeners can invalidate narrowly */
+export type ContentScope = "events" | "calendar";
 
 export function publishContentChange(scope: ContentScope) {
   bus.emit("content", scope);

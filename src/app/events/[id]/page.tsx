@@ -5,11 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CalendarDays, MapPin, Clock, ArrowLeft, ArrowRight } from "lucide-react";
+import { CalendarDays, CalendarPlus, MapPin, Clock, ArrowLeft, ArrowRight } from "lucide-react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import { useEvents } from "@/lib/useEvents";
-import { CATEGORY_COLORS, todayIso, type VenueEvent } from "@/lib/events";
+import { itemColor, itemCategoryLabel, todayIso, type VenueEvent } from "@/lib/events";
 import { RichText } from "@/components/RichText";
 
 /* live Days : Hrs : Min : Sec board, ticking every second */
@@ -87,7 +87,7 @@ function Countdown({ event }: { event: VenueEvent }) {
 function EventDetail({ event }: { event: VenueEvent }) {
   const isToday = event.date === todayIso();
   const dateObj = new Date(`${event.date}T00:00:00`);
-  const accent = CATEGORY_COLORS[event.category];
+  const accent = itemColor(event);
 
   return (
     <main className="relative flex-1 overflow-hidden bg-bg">
@@ -163,7 +163,7 @@ function EventDetail({ event }: { event: VenueEvent }) {
                 className="label rounded-full px-3 py-1.5 text-[11px] font-bold text-bg"
                 style={{ backgroundColor: accent }}
               >
-                {event.category}
+                {itemCategoryLabel(event)}
               </span>
             </div>
           </div>
@@ -177,7 +177,7 @@ function EventDetail({ event }: { event: VenueEvent }) {
                 className="label text-xs font-semibold"
                 style={{ color: accent }}
               >
-                {event.type || event.category}
+                {event.type || itemCategoryLabel(event)}
               </span>
               <h1 className="display mt-2 text-4xl uppercase leading-none text-cream sm:text-5xl">
                 {event.title}
@@ -253,6 +253,16 @@ function EventDetail({ event }: { event: VenueEvent }) {
               Continue to get your ticket
               <ArrowRight className="size-4" />
             </Link>
+
+            {/* a plain link, not a fetch-and-download: the response is served
+                with a content-disposition header, so the browser handles it */}
+            <a
+              href={`/api/events/${encodeURIComponent(event.id)}/ics`}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-6 py-3 text-sm font-semibold text-cream transition-colors hover:border-orange hover:text-orange"
+            >
+              <CalendarPlus className="size-4" />
+              Add to my calendar
+            </a>
           </div>
         </div>
       </div>

@@ -8,6 +8,8 @@ import { resendTicket } from "@/lib/tickets";
 import { sendTicketNudgeEmail } from "@/lib/mailer";
 import { appUrl } from "@/lib/appUrl";
 import { ok, fail, unauthorized } from "@/lib/http";
+import { recordAudit } from "@/lib/audit";
+import { programmeBlockedReason } from "@/lib/programme";
 
 /* Admin-triggered pass delivery for a selected list of participants (or a
    single one). Two cases per person, decided by where they are in the flow:
@@ -39,6 +41,14 @@ export async function POST(req: Request) {
     participants.map(async (p) => {
       const event = eventById.get(p.event.toString());
       if (!event) throw new Error("Event no longer exists");
+
+      /* Per person, not up front: one bulk selection can span several
+         programmes, and one of them being a draft must not silently cancel the
+         send for everybody else. The blocked people come back in `results`
+         with the reason, so the Emails page can say exactly who was skipped
+         and why. */
+      const blocked = programmeBlockedReason(event);
+      if (blocked) throw new Error(blocked);
 
       if (p.ticket) {
         const ticket = await Ticket.findById(p.ticket);
@@ -77,6 +87,14 @@ export async function POST(req: Request) {
         };
   });
   const sent = detail.filter((d) => d.ok).length;
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "email.send",
+    target: { type: "email", id: "", label: "bulk send" },
+    summary: `Sent passes/nudges to ${sent} of ${participants.length} people (${participants.length - sent} failed)`,
+  });
 
   return ok({ requested: participants.length, sent, failed: participants.length - sent, results: detail });
 }

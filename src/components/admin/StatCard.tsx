@@ -3,11 +3,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+/* Tinted icon chips. Written as translucent overlays on a saturated hue
+   rather than as the 100/700 light-mode pairs they used to be: the admin
+   console is dark-only (`.admin-scope`), and a 100-weight background under
+   700-weight text rendered as a pale block of near-invisible ink on it.
+   An alpha tint reads correctly on either ground. */
 const TONES = {
-  orange: "bg-orange-100 text-orange-600",
-  green: "bg-green-100 text-green-700",
-  blue: "bg-sky-100 text-sky-700",
-  zinc: "bg-stone-100 text-stone-600",
+  orange: "bg-orange-500/15 text-orange-300",
+  green: "bg-emerald-500/15 text-emerald-300",
+  blue: "bg-sky-500/15 text-sky-300",
+  zinc: "bg-muted text-muted-foreground",
 } as const;
 
 export function StatCard({

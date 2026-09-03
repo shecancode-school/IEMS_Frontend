@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // vendored Swagger UI bundle, copied in by scripts/copy-swagger.ts
+    "public/swagger/**",
   ]),
 ]);
 

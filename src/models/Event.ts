@@ -1,5 +1,9 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
 import { endOfEventDay } from "@/lib/time";
+import { EVENT_MODES, type EventMode } from "@/types/admin";
+
+export { EVENT_MODES };
+export type { EventMode };
 
 /* IRO's real program areas — drives the public calendar colour coding */
 export const EVENT_CATEGORIES = [
@@ -67,6 +71,14 @@ export interface EventDoc {
   location: string;
   /** 16. is published — gate that exposes the event on the public calendar */
   isPublished: boolean;
+  /* IN_PERSON | ONLINE | HYBRID. Online and hybrid events carry a Meet link
+     that is emailed to registrants along with their pass. */
+  mode: EventMode;
+  meetLink?: string | null;
+  googleEventId?: string | null;
+  /* the staff member running it — puts the event in their lane on the org
+     calendar, and owns the Google Calendar copy that holds the Meet link */
+  host?: Types.ObjectId | null;
   /** archived events are hidden from the public site + active lists */
   archivedAt?: Date | null;
   createdAt: Date;
@@ -91,6 +103,10 @@ const EventSchema = new Schema<EventDoc>(
     price: { type: String, default: "Free" },
     location: { type: String, default: "" },
     isPublished: { type: Boolean, default: false },
+    mode: { type: String, enum: EVENT_MODES, default: "IN_PERSON" },
+    meetLink: { type: String, default: "" },
+    googleEventId: { type: String, default: null },
+    host: { type: Schema.Types.ObjectId, ref: "Admin", default: null },
     archivedAt: { type: Date, default: null },
   },
   { timestamps: true }

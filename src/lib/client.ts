@@ -1,16 +1,16 @@
-/* Browser-side helpers: role-aware JSON fetch with auth + localStorage
-   persistence for the long-lived roles (admin/scanner). The participant token
-   lives only in Redux memory and is refreshed via the httpOnly cookie. */
+/* Browser-side helpers: role-aware JSON fetch.
+
+   NOTHING is stored in localStorage. Staff sessions are httpOnly cookies the
+   browser attaches automatically and JavaScript cannot read, so an XSS on the
+   console has no credential to steal. The participant access token lives only
+   in Redux memory and is re-minted from its own httpOnly refresh cookie. */
 
 import type { Role } from "@/store/authSlice";
 import { bridgeGetToken, bridgeOnUnauthorized, bridgeRefresh } from "./authBridge";
 
-/* localStorage keys — only admin & scanner persist here (they carry long
-   bearer tokens); the participant relies on the refresh cookie instead. */
-export const STORAGE_KEYS = {
-  admin: { token: "iems_admin_token", role: "iems_admin_role", name: "iems_admin_name" },
-  scanner: { token: "iems_scanner_token", name: "iems_scanner_name" },
-} as const;
+/* Deliberately empty: nothing is persisted in the browser any more. Staff use
+   an httpOnly session cookie and the participant token lives in memory only. */
+export const STORAGE_KEYS = {} as const;
 
 export class ApiError extends Error {
   status: number;
@@ -48,16 +48,41 @@ async function rawFetch(path: string, opts: ApiOptions, token: string | null): P
   });
 }
 
+/* Staff auth is a cookie, so it needs no bearer token — only `credentials`,
+   and a refresh endpoint to call when the short-lived access cookie expires. */
+async function refreshStaffSession(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/staff/refresh", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
-  const token = opts.role ? bridgeGetToken(opts.role) : null;
-  let res = await rawFetch(path, opts, token);
+  /* the admin role authenticates by cookie; only participant and scanner
+     still carry a bearer */
+  const usesCookie = opts.role === "admin";
+  const options: ApiOptions = usesCookie ? { ...opts, credentials: "same-origin" } : opts;
+  const token = opts.role && !usesCookie ? bridgeGetToken(opts.role) : null;
+
+  let res = await rawFetch(path, options, token);
 
   /* one transparent recovery attempt on 401 */
   if (res.status === 401 && opts.role) {
-    if (opts.role === "participant") {
+    if (usesCookie) {
+      /* the 15-minute access cookie expired; the refresh cookie renews both */
+      if (await refreshStaffSession()) {
+        res = await rawFetch(path, options, null);
+      }
+      if (res.status === 401) bridgeOnUnauthorized(opts.role);
+    } else if (opts.role === "participant") {
       const fresh = await bridgeRefresh();
       if (fresh) {
-        res = await rawFetch(path, opts, fresh);
+        res = await rawFetch(path, options, fresh);
       }
       if (res.status === 401) bridgeOnUnauthorized(opts.role);
     } else {

@@ -3,42 +3,215 @@ import type Mail from "nodemailer/lib/mailer";
 import { dbConnect } from "./db";
 import { EmailLog, type EmailKind } from "@/models/EmailLog";
 import { formatEventDate, formatEventDateTime } from "./time";
+import { googleCalendarUrl, icsForEvent } from "./calendarLinks";
 
-/* Build the transporter lazily so the Gmail credentials are read at call time.
-   The app injects env before modules run, but tsx (seed/health/tests) loads
-   .env.local after the hoisted imports evaluate — an eager transporter would
-   capture undefined creds and fail every send with "Missing credentials". */
-let cached: Transporter | undefined;
-function transport(): Transporter {
-  if (!cached) {
-    cached = nodemailer.createTransport({
-      service: "gmail",
-      /* pooling is the speed fix: without it every email pays a fresh TLS
-         handshake + Gmail login (1–3s). The pool keeps 4 authenticated
-         connections open and sends through them concurrently, so one email
-         costs ~200–500ms and a blast runs 4-wide. */
-      pool: true,
-      maxConnections: 4,
-      maxMessages: 100,
-      /* a wedged connection must fail fast, not stall a send for minutes */
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 20_000,
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
-    });
+/* ------------------------------------------------------------------ SMTP
+   Explicit host/port with enforced TLS, and any number of sending accounts.
+
+   `service: "gmail"` was a shorthand that hid the transport settings; naming
+   the host and port makes the security properties reviewable and lets the
+   whole thing point somewhere other than Gmail without a code change:
+
+     port 587  STARTTLS — connect in the clear, then upgrade. `requireTLS`
+               makes the upgrade mandatory, so a downgrade attack fails the
+               send instead of quietly transmitting credentials in plaintext.
+     port 465  implicit TLS — encrypted from the first byte.
+
+   `servername` is set explicitly for SNI. Without it a host behind shared
+   infrastructure presents the wrong certificate and the failure surfaces as a
+   misleading "self-signed certificate" error rather than a name mismatch.
+
+   Several accounts can send: MAIL_ACCOUNTS is a JSON array, so a new sender is
+   an environment change and a restart, not a redeploy. Each gets its own
+   pooled transport, built on first use. */
+
+export type MailAccount = { email: string; pass: string; label: string };
+
+/* Named providers, so a deployment declares MAIL_PROVIDER=gmail rather than
+   remembering that Gmail submission is 587 and that 465 means implicit TLS.
+   SMTP_HOST / SMTP_PORT still win when they are set, which is what "custom"
+   is for. Every preset here is a submission port with mandatory TLS — there
+   is deliberately no plaintext 25 entry. */
+const PROVIDERS = {
+  gmail: { smtp: "smtp.gmail.com", port: 587, imap: "imap.gmail.com", imapPort: 993 },
+  zoho: { smtp: "smtp.zoho.com", port: 465, imap: "imap.zoho.com", imapPort: 993 },
+  outlook: { smtp: "smtp-mail.outlook.com", port: 587, imap: "outlook.office365.com", imapPort: 993 },
+} as const;
+
+type ProviderName = keyof typeof PROVIDERS;
+
+function provider(): (typeof PROVIDERS)[ProviderName] | null {
+  const name = process.env.MAIL_PROVIDER?.trim().toLowerCase();
+  if (!name || name === "custom") return null;
+  const preset = PROVIDERS[name as ProviderName];
+  if (!preset) {
+    console.error(
+      `MAIL_PROVIDER="${name}" is not one of ${Object.keys(PROVIDERS).join(", ")} — set SMTP_HOST/SMTP_PORT explicitly`
+    );
+    return null;
   }
-  return cached;
+  return preset;
 }
 
-const FROM = () => `Igire Rwanda Organization Events <${process.env.GMAIL_USER}>`;
+export type SmtpSettings = {
+  host: string;
+  port: number;
+  /** implicit TLS from the first byte (465) vs STARTTLS upgrade (587) */
+  implicitTls: boolean;
+  encryption: "TLS" | "STARTTLS";
+};
 
-/* liveness check for the health-check script — verifies the SMTP connection
-   and credentials without sending a message. Throws on failure. */
+/* The single place the transport settings are decided.
+
+   This used to be inlined in three places (transport, mailerConfig, and the
+   health check), which meant the admin Emails screen could report a host the
+   transport was not actually using. */
+export function smtpSettings(): SmtpSettings {
+  const preset = provider();
+  const host = process.env.SMTP_HOST?.trim() || preset?.smtp || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT ?? preset?.port ?? 587);
+  const implicitTls = port === 465;
+  return { host, port, implicitTls, encryption: implicitTls ? "TLS" : "STARTTLS" };
+}
+
+/* IMAP is not used for sending; it is reported so an administrator can see
+   the whole mailbox configuration in one place on the health screen. */
+export function imapSettings(): { host: string; port: number } | null {
+  const preset = provider();
+  const host = process.env.IMAP_HOST?.trim() || preset?.imap;
+  if (!host) return null;
+  return { host, port: Number(process.env.IMAP_PORT ?? preset?.imapPort ?? 993) };
+}
+
+let accountCache: MailAccount[] | undefined;
+
+export function mailAccounts(): MailAccount[] {
+  if (accountCache) return accountCache;
+
+  const raw = process.env.MAIL_ACCOUNTS?.trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as MailAccount[];
+      const valid = parsed.filter((a) => a?.email && a?.pass);
+      if (valid.length) {
+        accountCache = valid.map((a) => ({
+          email: a.email.trim(),
+          pass: a.pass.trim(),
+          label: a.label?.trim() || a.email.trim(),
+        }));
+        return accountCache;
+      }
+    } catch {
+      /* a malformed MAIL_ACCOUNTS must not silently mean "no email at all" —
+         fall through to the single-account variables below */
+      console.error("MAIL_ACCOUNTS is not valid JSON — falling back to GMAIL_USER");
+    }
+  }
+
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  accountCache = user && pass ? [{ email: user, pass, label: "Default" }] : [];
+  return accountCache;
+}
+
+/* Which account sends when the caller does not name one. */
+export function defaultMailAccount(): MailAccount {
+  const all = mailAccounts();
+  if (!all.length) {
+    throw new Error("No sending account configured — set MAIL_ACCOUNTS or GMAIL_USER/GMAIL_APP_PASSWORD");
+  }
+  const preferred = process.env.MAIL_FROM?.trim().toLowerCase();
+  return all.find((a) => a.email.toLowerCase() === preferred) ?? all[0];
+}
+
+function resolveAccount(email?: string): MailAccount {
+  if (!email) return defaultMailAccount();
+  const match = mailAccounts().find((a) => a.email.toLowerCase() === email.toLowerCase());
+  /* an unknown sender falls back rather than throwing: a stale saved choice in
+     the admin UI should not stop an email going out */
+  return match ?? defaultMailAccount();
+}
+
+/* One pooled transport per account, built lazily.
+
+   Lazy matters: the app injects env before modules run, but tsx (seed, health,
+   tests) loads .env.local after the hoisted imports evaluate, so an eager
+   transport would capture undefined credentials and fail every send with
+   "Missing credentials". */
+const transports = new Map<string, Transporter>();
+
+function transport(account: MailAccount = defaultMailAccount()): Transporter {
+  const existing = transports.get(account.email);
+  if (existing) return existing;
+
+  const { host, port, implicitTls } = smtpSettings();
+
+  const created = nodemailer.createTransport({
+    host,
+    port,
+    /* true only for implicit-TLS 465; 587 starts plain and upgrades */
+    secure: implicitTls,
+    /* on 587 the upgrade is mandatory — never fall back to an unencrypted
+       session just because the server did not advertise STARTTLS */
+    requireTLS: !implicitTls,
+    /* pooling is the speed fix: without it every email pays a fresh TLS
+       handshake + login (1–3s). The pool keeps 4 authenticated connections
+       open and sends through them concurrently, so one email costs
+       ~200–500ms and a blast runs 4-wide. */
+    pool: true,
+    maxConnections: 4,
+    maxMessages: 100,
+    /* a wedged connection must fail fast, not stall a send for minutes */
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+    tls: {
+      /* SNI — without it a shared-infrastructure host presents the wrong
+         certificate and the error reads as "self-signed certificate" */
+      servername: host,
+      minVersion: "TLSv1.2",
+      /* certificate verification stays on. If a deployment genuinely needs it
+         off, that belongs in a documented, deliberate change here — not an
+         env var someone can flip by accident. */
+      rejectUnauthorized: true,
+    },
+    auth: { user: account.email, pass: account.pass },
+  });
+
+  transports.set(account.email, created);
+  return created;
+}
+
+const FROM = (account: MailAccount) =>
+  `Igire Rwanda Organization Events <${account.email}>`;
+
+/* Liveness check for the health-check script: opens the connection and
+   authenticates against EVERY configured account without sending anything, so
+   a broken app password on the second sender is caught before it is used. */
 export async function verifyMailer(): Promise<boolean> {
-  return transport().verify();
+  const all = mailAccounts();
+  if (!all.length) throw new Error("No sending account configured");
+  const results = await Promise.allSettled(all.map((a) => transport(a).verify()));
+
+  const failed = results
+    .map((r, i) => (r.status === "rejected" ? all[i].email : null))
+    .filter(Boolean);
+  if (failed.length) throw new Error(`SMTP verification failed for: ${failed.join(", ")}`);
+  return true;
+}
+
+/* the transport settings, for the health page and the admin Emails screen */
+export function mailerConfig() {
+  const { host, port, encryption } = smtpSettings();
+  return {
+    host,
+    port,
+    encryption,
+    provider: process.env.MAIL_PROVIDER?.trim().toLowerCase() || "custom",
+    imap: imapSettings(),
+    accounts: mailAccounts().map((a) => ({ email: a.email, label: a.label })),
+    defaultFrom: mailAccounts().length ? defaultMailAccount().email : null,
+  };
 }
 
 /* ------------------------------------------------------------- templates
@@ -265,6 +438,8 @@ export type TicketEmailInput = {
   eventName: string;
   eventDate?: Date | null;
   venue?: string;
+  /** online and hybrid events: the Google Meet link, shown alongside the pass */
+  meetLink?: string | null;
   /** event poster shown as a banner atop the pass */
   eventImage?: string | null;
   ticketCode: string;
@@ -339,6 +514,15 @@ export function renderTicketEmail(
         </div>
       </div>
 
+      ${
+        opts.meetLink
+          ? `<div style="margin:24px 0;padding:16px 18px;background:#f6f7f5;border-radius:10px">
+               <p style="margin:0 0 4px;font-weight:bold;color:#0b2818">This one is online</p>
+               <p style="margin:0 0 12px;font-size:14px;color:#555">Join with the link below when it starts — the same link is in your calendar invitation.</p>
+               <a href="${opts.meetLink}" style="background:#0b2818;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 22px;border-radius:8px;display:inline-block">Join the Google Meet</a>
+             </div>`
+          : ""
+      }
       ${button(opts.ticketUrl, "View my pass online")}
       ${opts.hasPdf ? `<p style="font-size:13px;color:#555">We also attached a printable copy of your ticket as a PDF — handy if your phone battery has other plans.</p>` : ""}
     `),
@@ -385,13 +569,17 @@ async function logEmail(
   to: string,
   rendered: RenderedEmail,
   status: "SENT" | "FAILED",
-  error?: unknown
+  error?: unknown,
+  /** which sending account was used — needed to trace a delivery problem back
+      to one mailbox when several are in rotation */
+  from?: string
 ) {
   try {
     await dbConnect();
     await EmailLog.create({
       kind,
       to,
+      from: from ?? "",
       subject: rendered.subject,
       html: rendered.html,
       status,
@@ -409,14 +597,31 @@ async function deliver(
   extra: Partial<Mail.Options> = {},
   /** what to store in the log when it differs from what was transported
       (the ticket email swaps its cid: QR for an inline data URL) */
-  logged: RenderedEmail = rendered
+  logged: RenderedEmail = rendered,
+  /** which configured account sends it; omitted means the default */
+  fromAccount?: string
 ) {
+  const account = resolveAccount(fromAccount);
+
+  /* `extra` is caller-supplied message options (attachments, headers). It must
+     never be able to rewrite who the message claims to be from: a From that
+     does not match the authenticated account fails DMARC alignment and the
+     mail is filed as spam or rejected outright. Strip both keys rather than
+     trusting every caller to leave them alone. */
+  const { from: _ignoredFrom, envelope: _ignoredEnvelope, ...safeExtra } = extra;
+  void _ignoredFrom;
+  void _ignoredEnvelope;
+
   try {
-    await transport().sendMail({
-      from: FROM(),
+    await transport(account).sendMail({
+      from: FROM(account),
+      /* The envelope sender must match the authenticated account, or SPF and
+         DKIM alignment break and the message lands in spam. Stating it
+         explicitly keeps that true even when `from` is a display name. */
+      envelope: { from: account.email, to },
       /* replies reach a real inbox — mail with a valid, aligned Reply-To is
          trusted more than a no-reply sender */
-      replyTo: process.env.GMAIL_USER,
+      replyTo: account.email,
       to,
       subject: rendered.subject,
       html: rendered.html,
@@ -426,21 +631,115 @@ async function deliver(
         ? {
             list: {
               unsubscribe: {
-                url: `mailto:${process.env.GMAIL_USER}?subject=Unsubscribe`,
+                url: `mailto:${account.email}?subject=Unsubscribe`,
                 comment: "Unsubscribe from Igire Rwanda event emails",
               },
             },
           }
         : {}),
-      ...extra,
+      ...safeExtra,
     });
   } catch (err) {
     /* log writes are off the critical path — the send result never waits on
        the database */
-    void logEmail(kind, to, logged, "FAILED", err);
+    void logEmail(kind, to, logged, "FAILED", err, account.email);
     throw err;
   }
-  void logEmail(kind, to, logged, "SENT");
+  void logEmail(kind, to, logged, "SENT", undefined, account.email);
+}
+
+/* --------------------------------------------------------------- bookings */
+/* Every time is written with an explicit "(Kigali time, UTC+2)" — a requester
+   may well be in another country, and the instant is unambiguous to us but the
+   rendered string is not to them. */
+
+export function renderBookingConfirmationEmail(p: {
+  name: string;
+  hostName: string;
+  when: string;
+  meetLink: string | null;
+  cancelUrl: string;
+  topic: string;
+  /* the real instants, for the "add to calendar" link. Optional so the
+     existing callers and the admin preview keep working without them. */
+  start?: Date;
+  end?: Date;
+  location?: string;
+}): RenderedEmail {
+  /* The booking is on the HOST's calendar automatically — we hold that
+     connection. The person who booked is usually not staff, so unless we hand
+     them a link this email is the only record they have of it. */
+  const addToCalendar =
+    p.start && p.end
+      ? googleCalendarUrl({
+          title: `Meeting with ${p.hostName}`,
+          start: p.start,
+          end: p.end,
+          details: [p.topic, p.meetLink ? `Join: ${p.meetLink}` : ""].filter(Boolean).join("\n\n"),
+          location: p.meetLink ?? p.location ?? "",
+        })
+      : null;
+
+  return {
+    subject: `Confirmed: your meeting with ${p.hostName}`,
+    html: shell(`
+      <p>Hi ${p.name.split(" ")[0]},</p>
+      <p>Your meeting with <b>${p.hostName}</b> is confirmed for <b>${p.when}</b>.</p>
+      ${p.topic ? `<p style="background:#f6f7f5;border-radius:8px;padding:12px 14px;margin:18px 0"><b>What you asked about</b><br/>${p.topic}</p>` : ""}
+      ${
+        p.meetLink
+          ? `${button(p.meetLink, "Join the Google Meet")}<p style="font-size:13px;color:#555">The same link is on the calendar invitation, so you can join from either.</p>`
+          : `<p>${p.hostName} will be in touch with the joining details closer to the time.</p>`
+      }
+      ${
+        addToCalendar
+          ? `<p style="margin:22px 0"><a href="${addToCalendar}" style="border:1px solid #0b2818;color:#0b2818;text-decoration:none;font-weight:bold;padding:11px 22px;border-radius:8px;display:inline-block">Add to Google Calendar</a></p>
+             <p style="font-size:13px;color:#555">Not on Google? The attached invitation opens in Outlook, Apple Calendar and anything else that reads .ics.</p>`
+          : ""
+      }
+      <p style="font-size:13px;color:#555">Something come up? You can <a href="${p.cancelUrl}">cancel this meeting</a> — please do, so the slot goes back to someone else.</p>
+    `),
+  };
+}
+
+export function renderBookingHostNoticeEmail(p: {
+  hostName: string;
+  requesterName: string;
+  requesterEmail: string;
+  when: string;
+  meetLink: string | null;
+  topic: string;
+}): RenderedEmail {
+  return {
+    subject: `New booking: ${p.requesterName}, ${p.when}`,
+    html: shell(`
+      <p>Hi ${p.hostName.split(" ")[0]},</p>
+      <p><b>${p.requesterName}</b> (${p.requesterEmail}) booked time with you on <b>${p.when}</b>.</p>
+      ${p.topic ? `<p style="background:#f6f7f5;border-radius:8px;padding:12px 14px;margin:18px 0"><b>What they want to talk about</b><br/>${p.topic}</p>` : ""}
+      ${p.meetLink ? button(p.meetLink, "Join the Google Meet") : ""}
+      <p style="font-size:13px;color:#555">It is already on your calendar, and the slot is now closed to everyone else.</p>
+    `),
+  };
+}
+
+export function renderBookingCancelledEmail(p: {
+  name: string;
+  otherName: string;
+  when: string;
+  cancelledByThem: boolean;
+}): RenderedEmail {
+  return {
+    subject: `Cancelled: your meeting on ${p.when}`,
+    html: shell(`
+      <p>Hi ${p.name.split(" ")[0]},</p>
+      <p>${
+        p.cancelledByThem
+          ? `<b>${p.otherName}</b> has cancelled your meeting on <b>${p.when}</b>.`
+          : `Your meeting with <b>${p.otherName}</b> on <b>${p.when}</b> has been cancelled.`
+      }</p>
+      <p>Nothing else is needed from you — the calendar entry has been removed and the time is free again.</p>
+    `),
+  };
 }
 
 export async function sendMagicLinkEmail(to: string, name: string, url: string, eventName: string) {
@@ -518,4 +817,71 @@ export async function sendTicketEmail(opts: TicketEmailInput) {
         : []),
     ],
   }, logged);
+}
+
+export async function sendBookingConfirmationEmail(p: {
+  to: string;
+  name: string;
+  hostName: string;
+  when: string;
+  meetLink: string | null;
+  cancelUrl: string;
+  topic: string;
+  /* when supplied, the email carries an "add to calendar" link and an .ics */
+  start?: Date;
+  end?: Date;
+  location?: string;
+  bookingId?: string;
+}) {
+  const rendered = renderBookingConfirmationEmail(p);
+  /* .ics alongside the Google link: attachments cover Outlook and Apple, the
+     link covers phones where opening an attachment is fiddly. */
+  const invite =
+    p.start && p.end
+      ? [
+          {
+            filename: "meeting.ics",
+            content: icsForEvent(
+              {
+                title: `Meeting with ${p.hostName}`,
+                start: p.start,
+                end: p.end,
+                details: p.topic,
+                location: p.meetLink ?? p.location ?? "",
+              },
+              `${p.bookingId ?? p.start.getTime()}@igirerwanda.org`
+            ),
+            contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+          },
+        ]
+      : undefined;
+
+  await deliver(
+    "BOOKING_CONFIRMED",
+    p.to,
+    rendered,
+    invite ? { attachments: invite } : {}
+  );
+}
+
+export async function sendBookingHostNoticeEmail(p: {
+  to: string;
+  hostName: string;
+  requesterName: string;
+  requesterEmail: string;
+  when: string;
+  meetLink: string | null;
+  topic: string;
+}) {
+  await deliver("BOOKING_HOST_NOTICE", p.to, renderBookingHostNoticeEmail(p));
+}
+
+export async function sendBookingCancelledEmail(p: {
+  to: string;
+  name: string;
+  otherName: string;
+  when: string;
+  cancelledByThem: boolean;
+}) {
+  await deliver("BOOKING_CANCELLED", p.to, renderBookingCancelledEmail(p));
 }

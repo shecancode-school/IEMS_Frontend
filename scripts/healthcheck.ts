@@ -2,10 +2,11 @@
    Reports, for each integration, whether it is configured and reachable.
    Run: pnpm health  (exits non-zero if any required check fails)
 
-   This answers "is each API connected?" without touching app data:
-     - MongoDB  — connects and runs an admin ping
-     - Cloudinary — resolves the account via api.ping (no upload)
-     - Gmail SMTP — verifies the connection + credentials (no email sent) */
+   The probes themselves are NOT defined here any more. They live in
+   src/lib/health.ts, shared with /api/admin/health and with the cron that runs
+   them unattended — this file used to define its own copy under different
+   names, so the CLI and the status page could disagree about the same service
+   and nobody would notice. This is now the terminal's view of that one list. */
 import mongoose from "mongoose";
 
 try {
@@ -14,78 +15,37 @@ try {
   /* fall back to already-exported env vars */
 }
 
-import { pingCloudinary } from "../src/lib/cloudinary";
-import { verifyMailer } from "../src/lib/mailer";
-
-type Check = {
-  name: string;
-  /** env vars that must be present for this integration to work */
-  requires: string[];
-  run: () => Promise<string>;
-};
-
-const checks: Check[] = [
-  {
-    name: "MongoDB",
-    requires: ["MONGODB_URI"],
-    run: async () => {
-      const conn = await mongoose.connect(process.env.MONGODB_URI!, {
-        bufferCommands: false,
-        serverSelectionTimeoutMS: 8000,
-      });
-      const admin = conn.connection.db!.admin();
-      await admin.ping();
-      const host = conn.connection.host;
-      await mongoose.disconnect();
-      return `ping ok (${host})`;
-    },
-  },
-  {
-    name: "Cloudinary",
-    requires: ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"],
-    run: async () => {
-      const res = await pingCloudinary();
-      return `status: ${res.status}`;
-    },
-  },
-  {
-    name: "Gmail SMTP",
-    requires: ["GMAIL_USER", "GMAIL_APP_PASSWORD"],
-    run: async () => {
-      await verifyMailer();
-      return `verified as ${process.env.GMAIL_USER}`;
-    },
-  },
-];
-
-function missingEnv(keys: string[]): string[] {
-  return keys.filter((k) => !process.env[k]);
-}
-
 async function main() {
+  /* imported after the env file is loaded — the modules underneath read
+     process.env at import time */
+  const { runHealthChecks, recordHealth } = await import("../src/lib/health");
+
   console.log("Integration health-check\n");
+
+  const services = await runHealthChecks();
   let failed = 0;
 
-  for (const check of checks) {
-    const missing = missingEnv(check.requires);
-    if (missing.length) {
-      console.log(`  ✗ ${check.name.padEnd(12)} not configured — missing ${missing.join(", ")}`);
-      failed++;
-      continue;
-    }
-    const started = Date.now();
-    try {
-      const detail = await check.run();
-      console.log(`  ✓ ${check.name.padEnd(12)} ${detail} (${Date.now() - started}ms)`);
-    } catch (err) {
-      console.log(`  ✗ ${check.name.padEnd(12)} ${(err as Error).message} (${Date.now() - started}ms)`);
-      failed++;
-    }
+  for (const s of services) {
+    const mark = s.ok ? (s.status === "not_configured" ? "–" : "✓") : "✗";
+    if (!s.ok) failed++;
+    console.log(`  ${mark} ${s.name.padEnd(16)} ${s.detail} (${s.ms}ms)`);
   }
 
-  console.log(`\n${checks.length - failed}/${checks.length} integrations healthy`);
+  /* the run counts towards the uptime history like any other, tagged so it is
+     never mistaken for unattended monitoring */
+  await recordHealth(services, "cli").catch(() => {});
+
+  console.log(`\n${services.length - failed}/${services.length} integrations healthy`);
   await mongoose.disconnect().catch(() => {});
   process.exit(failed ? 1 : 0);
 }
 
-main();
+main().catch(async (err) => {
+  /* dbConnect throws when MONGODB_URI is missing, before any probe can run.
+     That is a configuration failure, and it has to read as one rather than as
+     an unhandled rejection stack. */
+  console.log(`  ✗ ${(err as Error).message}`);
+  console.log("\n0 integrations checked");
+  await mongoose.disconnect().catch(() => {});
+  process.exit(1);
+});

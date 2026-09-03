@@ -14,6 +14,7 @@ import {
 import { requireAdmin } from "@/lib/auth";
 import { ticketQrDataUrl } from "@/lib/qr";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
+import { recordAudit, diff } from "@/lib/audit";
 
 /* Admin: full profile of a single participant — identity, ticket + QR, scan
    history, and their plus-one. (§7 Individual Guest View) */
@@ -124,6 +125,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const p = await Participant.findById(id);
   if (!p) return notFound("Participant");
 
+  /* snapshot before mutating, so the ledger records what actually moved
+     rather than restating every field that was sent */
+  const before = {
+    name: p.name,
+    email: p.email,
+    phone: p.phone ?? "",
+    stack: p.stack,
+    gender: p.gender,
+    registrationStatus: p.registrationStatus,
+  };
+
   const d = parsed.data;
   if (d.name !== undefined) p.name = d.name;
   if (d.email !== undefined) p.email = d.email.toLowerCase();
@@ -158,6 +170,24 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       );
     }
   }
+
+  const changes = diff(before, {
+    name: p.name,
+    email: p.email,
+    phone: p.phone ?? "",
+    stack: p.stack,
+    gender: p.gender,
+    registrationStatus: p.registrationStatus,
+  });
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "attendee.update",
+    target: { type: "participant", id: p._id.toString(), label: p.name },
+    summary: `Updated participant ${p.name}`,
+    changes,
+  });
 
   return ok({
     participant: {
@@ -199,6 +229,17 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
       { $inc: { registeredCount: -liveTickets } }
     );
   }
+
+  await recordAudit({
+    actorId: admin.id,
+    req,
+    action: "attendee.delete",
+    target: { type: "participant", id: p._id.toString(), label: p.name },
+    summary:
+      `Deleted participant ${p.name} <${p.email}>` +
+      (plusOnes.length ? ` and their plus-one` : "") +
+      (liveTickets > 0 ? `, releasing ${liveTickets} seat${liveTickets === 1 ? "" : "s"}` : ""),
+  });
 
   return ok({ deleted: true });
 }
