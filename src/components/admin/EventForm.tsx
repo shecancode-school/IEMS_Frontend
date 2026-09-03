@@ -142,7 +142,13 @@ function FieldInput({
   ...props
 }: ComponentProps<typeof Input> & { icon: ElementType }) {
   return (
-    <div className="relative">
+    /* flex, not just relative. An <input> is inline-block, so a plain wrapper
+       is a few pixels taller than the input it holds — the line box reserves
+       room for a descender under it. The icon centres on the wrapper, so it
+       came to rest below the centre of the input, and every field on the form
+       had its icon sitting low against its own text. As a flex item the input
+       is block-level and the two boxes are the same height. */
+    <div className="relative flex items-center">
       <Icon
         aria-hidden
         className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground"
@@ -201,9 +207,19 @@ function Section({
         </div>
       </div>
 
+      {/* items-start is load-bearing, not cosmetic.
+
+          A grid stretches its children to the tallest in the row by default,
+          and FormItem is itself a grid of auto rows — so a stretched cell
+          hands its leftover height back to its own rows. Ends carries a
+          description that Starts does not, which made the Ends cell taller,
+          which pushed Starts' label and inputs down inside their own cell.
+          The two halves of one row were reading 12px and 24px out of line
+          with each other. Letting each cell keep its natural height fixes
+          every pair on the form, not just this one. */}
       <div
         className={cn(
-          "grid gap-5 p-5 sm:p-6",
+          "grid items-start gap-5 p-5 sm:p-6",
           cols === 2 && "sm:grid-cols-2"
         )}
       >
@@ -302,7 +318,7 @@ function DateTimeField({
 
   return (
     <div className="grid gap-3 sm:grid-cols-[1.35fr_1fr]">
-      <div className="relative">
+      <div className="relative flex items-center">
         <button
           type="button"
           tabIndex={-1}
@@ -326,7 +342,7 @@ function DateTimeField({
         />
       </div>
 
-      <div className="relative">
+      <div className="relative flex items-center">
         <button
           type="button"
           tabIndex={-1}
@@ -350,22 +366,6 @@ function DateTimeField({
       </div>
     </div>
   );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Attendance mode                                                            */
-/* -------------------------------------------------------------------------- */
-
-function AttendanceModeIcon({ mode }: { mode?: string }) {
-  if (mode === "ONLINE") {
-    return <Video className="size-4" />;
-  }
-
-  if (mode === "HYBRID") {
-    return <Globe2 className="size-4" />;
-  }
-
-  return <MapPin className="size-4" />;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -424,7 +424,6 @@ export function EventForm({
      every render, which the React Compiler cannot memoise — it was skipping
      compilation of this whole component and saying so in the lint output. */
   const isPublished = useWatch({ control: form.control, name: "isPublished" });
-  const attendanceMode = useWatch({ control: form.control, name: "mode" });
   const startTime = useWatch({ control: form.control, name: "startTime" });
   /* the day the event starts, so the end picker cannot offer an earlier one */
   const startDay = (startTime ?? "").split("T")[0] || undefined;
@@ -749,34 +748,38 @@ export function EventForm({
                     onValueChange={field.onChange}
                   >
                     <FormControl>
+                      {/* No icon of our own in front of this one.
+
+                          SelectValue renders the CHOSEN ITEM'S children, and
+                          each of the three items below opens with its own
+                          icon — so adding a leading icon here printed two pins
+                          side by side for "In person", two cameras for
+                          "Online" and two globes for "Hybrid". The item's icon
+                          is the better of the two to keep: it is the same
+                          glyph in the closed control and in the open list. */}
                       <SelectTrigger className={cn("w-full", CONTROL)}>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <AttendanceModeIcon mode={attendanceMode} />
-                          <span className="text-foreground">
-                            <SelectValue placeholder="Select attendance mode" />
-                          </span>
-                        </div>
+                        <SelectValue placeholder="Select attendance mode" />
                       </SelectTrigger>
                     </FormControl>
 
                     <SelectContent>
                       <SelectItem value="IN_PERSON">
                         <div className="flex items-center gap-2">
-                          <MapPin className="size-4" />
+                          <TriggerIcon icon={MapPin} />
                           In person
                         </div>
                       </SelectItem>
 
                       <SelectItem value="ONLINE">
                         <div className="flex items-center gap-2">
-                          <Video className="size-4" />
+                          <TriggerIcon icon={Video} />
                           Online
                         </div>
                       </SelectItem>
 
                       <SelectItem value="HYBRID">
                         <div className="flex items-center gap-2">
-                          <Globe2 className="size-4" />
+                          <TriggerIcon icon={Globe2} />
                           Hybrid
                         </div>
                       </SelectItem>
