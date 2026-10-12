@@ -1,0 +1,33 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "Test",
+    "deploy-fixe",
+    "feature/calendar-scheduling-platform",
+    "feature/exportbtn",
+    "improved/ui",
+    "main",
+    "origin",
+    "testing"
+  ],
+  "parent": {
+    "Test": "main",
+    "deploy-fixe": "main",
+    "feature/calendar-scheduling-platform": "main",
+    "feature/exportbtn": "main",
+    "improved/ui": "main",
+    "main": null,
+    "origin": "main",
+    "testing": "main"
+  },
+  "order": [
+    "main",
+    "Test",
+    "deploy-fixe",
+    "feature/calendar-scheduling-platform",
+    "feature/exportbtn",
+    "improved/ui",
+    "origin",
+    "testing"
+  ]
+}
