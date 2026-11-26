@@ -3,117 +3,101 @@ import { Event, Guest, Participant } from "@/models";
 import { notifyAdmins } from "./notify";
 
 export const PLUS_ONE_FULL_MESSAGE =
-  "All plus-one places for this event have already been filled. Your own registration is confirmed.";
+  "Adding a plus-one isn't available for your registration. Your own registration is confirmed.";
 
 export const PLUS_ONE_FULL_GUEST_MESSAGE =
-  "Sorry, all plus-one places for this event have already been filled, so this invite can no longer be used.";
+  "This plus-one invite is no longer available.";
 
-/* Whether a participant holds one of the event's plus-one places (plusOneLimit,
-   0 = unlimited). Places go to participants in the order they accept their
-   invitation. A held place is kept for good; a refusal is re-checked on each
-   call, so raising or removing the limit reopens plus-ones for those turned away.
-   The conditional $inc keeps the counter from passing the limit under load. */
-export async function claimPlusOneSlot(participant: {
+/* Plus-one places (Event.plusOneLimit, 0 = unlimited) are used up only by
+   plus-one guests who actually exist: accepting the event invitation reserves
+   nothing, so participants who never add a guest don't hold a place. A place
+   counts while the guest is on the list, and stays counted after they check in
+   (their Guest record is then archived onto the ticket, but the participant's
+   plusOne reference remains). Deleting a plus-one frees the place. */
+
+const liveFilter = (eventId: Types.ObjectId) => ({
+  event: eventId,
+  inviter: { $type: "objectId" as const },
+});
+
+/* Plus-ones that already checked in: the participant still points at a guest
+   record that no longer exists. */
+async function checkedInCount(eventId: Types.ObjectId, liveIds: Types.ObjectId[]) {
+  return Participant.countDocuments({
+    event: eventId,
+    plusOne: { $ne: null, $nin: liveIds },
+  });
+}
+
+/* Plus-ones counted toward the limit right now; also refreshes the cached
+   counter the admin pages show. */
+export async function countPlusOnes(eventId: Types.ObjectId): Promise<number> {
+  const liveIds: Types.ObjectId[] = await Guest.distinct("_id", liveFilter(eventId));
+  const taken = liveIds.length + (await checkedInCount(eventId, liveIds));
+  await Event.updateOne(
+    { _id: eventId, plusOneSlotsTaken: { $ne: taken } },
+    { $set: { plusOneSlotsTaken: taken } }
+  );
+  return taken;
+}
+
+export async function plusOnesFull(eventId: Types.ObjectId): Promise<boolean> {
+  const event = await Event.findById(eventId).select("plusOneLimit");
+  const limit = event?.plusOneLimit ?? 0;
+  if (limit <= 0) {
+    void countPlusOnes(eventId).catch(() => {});
+    return false;
+  }
+  return (await countPlusOnes(eventId)) >= limit;
+}
+
+/* Whether this participant may add (or keep) a plus-one: anyone who already
+   has one keeps it; anyone else may add one while places remain. */
+export async function canAddPlusOne(participant: {
   _id: Types.ObjectId;
   event: Types.ObjectId;
   status?: string;
-  plusOneAllowed?: boolean | null;
+  plusOne?: Types.ObjectId | null;
 }): Promise<boolean> {
   if (participant.status === "PENDING") return false;
-  if (participant.plusOneAllowed === true) return true;
+  if (participant.plusOne || (await Guest.exists({ inviter: participant._id }))) return true;
+  return !(await plusOnesFull(participant.event));
+}
 
-  /* plus-ones added before the limit existed must be counted before we claim */
-  await syncPlusOneSlots([participant.event]);
-  const synced = await Participant.findById(participant._id).select("plusOneAllowed");
-  if (synced?.plusOneAllowed === true) {
-    participant.plusOneAllowed = true;
-    return true;
-  }
-
-  const claimed = await Event.findOneAndUpdate(
-    {
-      _id: participant.event,
-      $expr: {
-        $or: [
-          { $lte: [{ $ifNull: ["$plusOneLimit", 0] }, 0] },
-          { $lt: [{ $ifNull: ["$plusOneSlotsTaken", 0] }, "$plusOneLimit"] },
-        ],
-      },
-    },
-    { $inc: { plusOneSlotsTaken: 1 } },
-    { returnDocument: "after" }
-  ).select("name plusOneLimit plusOneSlotsTaken");
-
-  if (!claimed) {
-    if (participant.plusOneAllowed !== false) {
-      await Participant.updateOne(
-        { _id: participant._id, plusOneAllowed: null },
-        { plusOneAllowed: false }
-      );
-      participant.plusOneAllowed = false;
+/* Called right after a plus-one guest is created. Two people adding the last
+   place at once both get created, so each checks its position: guests are
+   ranked by creation (_id), checked-in plus-ones first. A guest past the limit
+   must be removed by the caller. Returns whether this guest keeps its place. */
+export async function confirmPlusOnePlace(guest: {
+  _id: Types.ObjectId;
+  event: Types.ObjectId;
+}): Promise<boolean> {
+  const event = await Event.findById(guest.event).select("name plusOneLimit");
+  const limit = event?.plusOneLimit ?? 0;
+  if (limit > 0) {
+    const liveIds: Types.ObjectId[] = await Guest.distinct("_id", liveFilter(guest.event));
+    const ahead =
+      (await checkedInCount(guest.event, liveIds)) +
+      liveIds.filter((id) => id.toString() <= guest._id.toString()).length;
+    if (ahead > limit) return false;
+    if (ahead === limit && event) {
+      await notifyAdmins({
+        kind: "SYSTEM",
+        severity: "warning",
+        title: `Plus-one places are full for ${event.name}`,
+        body: `All ${limit} plus-one places have been used by added guests. Participants can no longer add a plus-one. Raise the limit on the event to reopen them.`,
+        eventId: event._id,
+      });
     }
-    return false;
   }
-
-  const res = await Participant.updateOne(
-    { _id: participant._id, plusOneAllowed: { $ne: true } },
-    { plusOneAllowed: true }
-  );
-  if (res.modifiedCount === 0) {
-    /* a parallel call already gave them a place: hand ours back */
-    await releasePlusOneSlot(participant.event);
-    participant.plusOneAllowed = true;
-    return true;
-  }
-  participant.plusOneAllowed = true;
-
-  if (claimed.plusOneLimit > 0 && claimed.plusOneSlotsTaken === claimed.plusOneLimit) {
-    await notifyAdmins({
-      kind: "SYSTEM",
-      severity: "warning",
-      title: `Plus-one places are full for ${claimed.name}`,
-      body: `All ${claimed.plusOneLimit} plus-one places have been claimed. Participants who accept from now on will register without a plus-one. Raise the limit on the event to reopen them.`,
-      eventId: claimed._id,
-    });
-  }
+  await countPlusOnes(guest.event);
   return true;
 }
 
-/* Count plus-ones that already exist toward the limit: participants who have a
-   plus-one (live, or checked in and archived) are marked as holding a place, and
-   the counter is raised to match. Only adds data, and $max never lowers the
-   counter, so it is safe to run at any time, even alongside live claims. */
+/* Recount every event (or the given ones) from the guests that exist, so the
+   counter shown to admins always equals the plus-ones actually added. Only the
+   counter is written; no participant or guest data is touched. */
 export async function syncPlusOneSlots(eventIds?: Types.ObjectId[]) {
-  const scope = eventIds ? { event: { $in: eventIds } } : {};
-  const inviters = await Guest.distinct("inviter", {
-    ...scope,
-    guestType: "PLUS_ONE",
-    inviter: { $ne: null },
-  });
-  await Participant.updateMany(
-    {
-      ...scope,
-      plusOneAllowed: { $ne: true },
-      $or: [{ _id: { $in: inviters } }, { plusOne: { $ne: null } }],
-    },
-    { $set: { plusOneAllowed: true } }
-  );
-  const counts: { _id: Types.ObjectId; n: number }[] = await Participant.aggregate([
-    { $match: { ...scope, plusOneAllowed: true } },
-    { $group: { _id: "$event", n: { $sum: 1 } } },
-  ]);
-  if (counts.length) {
-    await Event.bulkWrite(
-      counts.map((c) => ({
-        updateOne: { filter: { _id: c._id }, update: { $max: { plusOneSlotsTaken: c.n } } },
-      }))
-    );
-  }
-}
-
-export async function releasePlusOneSlot(eventId: Types.ObjectId) {
-  await Event.updateOne(
-    { _id: eventId, plusOneSlotsTaken: { $gt: 0 } },
-    { $inc: { plusOneSlotsTaken: -1 } }
-  );
+  const ids: Types.ObjectId[] = eventIds ?? (await Event.distinct("_id"));
+  await Promise.all(ids.map((id) => countPlusOnes(id)));
 }

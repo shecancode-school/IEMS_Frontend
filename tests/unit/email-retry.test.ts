@@ -23,6 +23,7 @@ vi.mock("@/models", () => ({
 vi.mock("@/lib/mailer", () => ({ sendRegistrationConfirmation: m.confirm }));
 vi.mock("@/lib/participantInvitation", () => ({ sendParticipantInvitation: m.invite }));
 vi.mock("@/lib/tickets", () => ({ resendTicket: m.resendTicket }));
+vi.mock("@/lib/plusOneSlots", () => ({ plusOnesFull: async () => false }));
 
 import { retryFailedEmails, unresolvedFailures } from "@/lib/emailRetry";
 

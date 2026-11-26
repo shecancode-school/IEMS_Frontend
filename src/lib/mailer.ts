@@ -132,13 +132,10 @@ export function renderRegistrationConfirmation(p: {
       <p>Your registration for <b>${p.eventName}</b> is confirmed — welcome aboard!</p>
       <p>The next step is to complete your profile so we can issue your event pass. You will receive it by email as soon as it's ready.</p>
       ${
-        !p.plusOne
-          ? ""
-          : !p.plusOne.allowed
-            ? `<p style="padding:12px 16px;background:#fff4e5;border-left:4px solid #e8862a;border-radius:8px"><b>Plus-one places are full.</b> All ${p.plusOne.limit > 0 ? `${p.plusOne.limit} ` : ""}plus-one places for this event have already been filled, so your registration is for you only.</p>`
-            : p.plusOne.limit > 0
-              ? `<p>Good news: you've secured one of the ${p.plusOne.limit} plus-one places for this event. You can add your guest from your dashboard.</p>`
-              : `<p>You can also bring a plus-one. Add your guest from your dashboard.</p>`
+        /* participants without a plus-one place simply aren't offered one */
+        p.plusOne?.allowed
+          ? `<p>You can also bring a plus-one. Add your guest from your dashboard.</p>`
+          : ""
       }
     `, "Your registration is confirmed", p.eventName),
   };

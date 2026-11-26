@@ -3,6 +3,7 @@ import { EmailLog, Event, Guest, Participant, Ticket, type EmailKind } from "@/m
 import { sendRegistrationConfirmation } from "./mailer";
 import { sendParticipantInvitation } from "./participantInvitation";
 import { resendTicket } from "./tickets";
+import { plusOnesFull } from "./plusOneSlots";
 
 /* Kinds an admin can retry: each one is rebuilt fresh (new sign-in link, current
    ticket) instead of replaying the stored HTML, whose links may have expired. */
@@ -72,7 +73,7 @@ async function retryOne(
     if (!participant) return { skipped: "No longer registered for this event" };
     if (participant.registrationStatus === "REJECTED") return { skipped: "Registration rejected" };
     await sendRegistrationConfirmation(participant.email, participant.name, eventName, {
-      allowed: participant.plusOneAllowed === true,
+      allowed: !(await plusOnesFull(eventId)),
       limit: plusOneLimit,
     });
     return { sent: true };

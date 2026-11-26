@@ -5,7 +5,7 @@ import { Event, Participant, VerificationToken } from "@/models";
 import { signParticipantAccessToken } from "@/lib/auth";
 import { issueRefreshToken, setRefreshCookie } from "@/lib/session";
 import { sendRegistrationConfirmation } from "@/lib/mailer";
-import { claimPlusOneSlot } from "@/lib/plusOneSlots";
+import { plusOnesFull } from "@/lib/plusOneSlots";
 import { ok, fail } from "@/lib/http";
 
 const Body = z.object({ token: z.string().min(10) });
@@ -34,14 +34,13 @@ export async function POST(req: Request) {
   if (firstVerification) {
     /* first successful verification moves them out of PENDING */
     participant.status = "VERIFIED";
-    /* accepting the invitation is what queues them for a plus-one place — the
-       first N to get here win one, so this must happen before the response */
-    const plusOneAllowed = await claimPlusOneSlot(participant);
     /* confirm their registration once — the lookup and email are fully
        deferred so they never hold up the response the visitor is waiting on */
     void (async () => {
       const event = await Event.findById(participant.event);
       if (event) {
+        /* accepting reserves no plus-one place; only mention one while room is left */
+        const plusOneAllowed = !(await plusOnesFull(event._id));
         await sendRegistrationConfirmation(
           participant.email,
           participant.name,

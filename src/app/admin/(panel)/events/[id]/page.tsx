@@ -143,10 +143,10 @@ export default function EventDetailPage({ params }: { params: Promise<{ id: stri
                   label="Plus-one places"
                   value={
                     !event.plusOneLimit
-                      ? `Unlimited (${event.plusOneSlotsTaken ?? 0} claimed)`
+                      ? `Unlimited (${event.plusOneSlotsTaken ?? 0} added)`
                       : (event.plusOneSlotsTaken ?? 0) >= event.plusOneLimit
                         ? `Full: ${event.plusOneLimit} / ${event.plusOneLimit}`
-                        : `${event.plusOneSlotsTaken ?? 0} / ${event.plusOneLimit} claimed`
+                        : `${event.plusOneSlotsTaken ?? 0} / ${event.plusOneLimit} added`
                   }
                 />
               </dl>

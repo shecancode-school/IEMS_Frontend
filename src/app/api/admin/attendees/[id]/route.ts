@@ -1,7 +1,7 @@
 import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import { dbConnect } from "@/lib/db";
-import { releasePlusOneSlot } from "@/lib/plusOneSlots";
+import { countPlusOnes } from "@/lib/plusOneSlots";
 import {
   Event,
   Guest,
@@ -189,8 +189,8 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     Guest.deleteMany({ inviter: p._id }),
     Ticket.deleteMany({ holderId: { $in: holderIds } }),
   ]);
-  /* free their plus-one place for the next participant to accept */
-  if (p.plusOneAllowed) await releasePlusOneSlot(p.event);
+  /* their plus-one (if any) is gone, so recount the event's places */
+  await countPlusOnes(p.event);
   /* release the seats the live tickets held */
   if (liveTickets > 0) {
     await Event.findOneAndUpdate(

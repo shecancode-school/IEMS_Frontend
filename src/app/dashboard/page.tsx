@@ -55,7 +55,6 @@ type Me = {
     status: string;
   } | null;
   plusOneAllowed?: boolean;
-  plusOnePlaces?: { limit: number; taken: number; remaining: number | null; full: boolean } | null;
 };
 
 type Stack = "FRONTEND" | "BACKEND" | "FULLSTACK" | "MOBILE" | "DATA" | "OTHER";
@@ -470,28 +469,9 @@ function PlusOneCard({ me, onChanged }: { me: Me; onChanged: () => void }) {
     );
   }
 
-  if (me.plusOneAllowed === false) {
-    const limit = me.plusOnePlaces?.limit ?? 0;
-    return (
-      <Panel>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="label text-sm font-bold text-orange">Plus-one</h2>
-          <span className="rounded-full border border-orange/50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-orange">
-            Places full{limit > 0 && ` · ${limit}/${limit}`}
-          </span>
-        </div>
-        <p className="text-sm font-semibold">Plus-one places are already filled</p>
-        <p className="mt-1 text-sm text-cream-dim">
-          {limit > 0
-            ? `All ${limit} plus-one places for this event were claimed by earlier registrations. `
-            : "All plus-one places for this event have been claimed. "}
-          Your own registration is confirmed. We look forward to seeing you!
-        </p>
-      </Panel>
-    );
-  }
+  /* no plus-one place for this registration: show nothing rather than say it's full */
+  if (me.plusOneAllowed === false) return null;
 
-  const limitedPlace = (me.plusOnePlaces?.limit ?? 0) > 0;
 
   async function addDirect(e: React.FormEvent) {
     e.preventDefault();
@@ -535,9 +515,6 @@ function PlusOneCard({ me, onChanged }: { me: Me; onChanged: () => void }) {
       {mode === "none" && (
         <div className="space-y-3">
           <p className="text-sm text-cream-dim">
-            {limitedPlace
-              ? `You've secured one of the ${me.plusOnePlaces?.limit} plus-one places for this event. `
-              : ""}
             You can bring one guest. Fill in their details yourself, or send them an invite to do it.
           </p>
           <div className="flex flex-wrap gap-3">

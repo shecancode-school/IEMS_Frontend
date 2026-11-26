@@ -96,9 +96,6 @@ export default function PlusOnePage({ params }: { params: Promise<{ token: strin
               {...step}
               className="flex flex-col items-center gap-3 py-6 text-center"
             >
-              <span className="rounded-full border border-orange/50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-orange">
-                Plus-one places full
-              </span>
               <p className="text-sm text-cream-dim">{error}</p>
             </motion.div>
           )}

@@ -6,7 +6,7 @@ import { Event, Guest, Participant, VerificationToken } from "@/models";
 import { requireAttendee } from "@/lib/auth";
 import { sendPlusOneInviteEmail } from "@/lib/mailer";
 import { appUrl } from "@/lib/appUrl";
-import { claimPlusOneSlot, PLUS_ONE_FULL_MESSAGE } from "@/lib/plusOneSlots";
+import { canAddPlusOne, PLUS_ONE_FULL_MESSAGE } from "@/lib/plusOneSlots";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
 const Body = z.object({ email: z.string().email().optional() });
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   await dbConnect();
   const participant = await Participant.findById(participantId);
   if (!participant) return notFound("Registration");
-  if (!(await claimPlusOneSlot(participant))) return fail(PLUS_ONE_FULL_MESSAGE, 403);
+  if (!(await canAddPlusOne(participant))) return fail(PLUS_ONE_FULL_MESSAGE, 403);
 
   const existing = await Guest.findOne({ inviter: participant._id });
   if (existing) return fail("You already have a plus-one", 409);

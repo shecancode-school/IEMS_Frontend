@@ -3,7 +3,7 @@ import { dbConnect } from "@/lib/db";
 import { Event, Guest, Participant, GENDERS, RELATIONSHIPS } from "@/models";
 import { requireAttendee } from "@/lib/auth";
 import { issueTicket, CapacityError } from "@/lib/tickets";
-import { claimPlusOneSlot, PLUS_ONE_FULL_MESSAGE } from "@/lib/plusOneSlots";
+import { canAddPlusOne, confirmPlusOnePlace, PLUS_ONE_FULL_MESSAGE } from "@/lib/plusOneSlots";
 import { ok, fail, unauthorized, notFound } from "@/lib/http";
 
 /* the participant fills their plus-one's details directly; the guest is
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   await dbConnect();
   const participant = await Participant.findById(participantId);
   if (!participant) return notFound("Registration");
-  if (!(await claimPlusOneSlot(participant))) return fail(PLUS_ONE_FULL_MESSAGE, 403);
+  if (!(await canAddPlusOne(participant))) return fail(PLUS_ONE_FULL_MESSAGE, 403);
 
   const email = parsed.data.email.toLowerCase();
   if (email === participant.email) return fail("Your plus-one needs their own email address");
@@ -58,6 +58,11 @@ export async function POST(req: Request) {
       return fail("That email is already registered for this event", 409);
     }
     throw err;
+  }
+  /* someone else may have taken the last place a moment ago */
+  if (!(await confirmPlusOnePlace(guest))) {
+    await Guest.deleteOne({ _id: guest._id });
+    return fail(PLUS_ONE_FULL_MESSAGE, 403);
   }
 
   try {
