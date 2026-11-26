@@ -31,7 +31,6 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
 
 # vercel
 .vercel
@@ -56,3 +55,4 @@ AGENTS.md
 # AI agent tooling (kept local only)
 skills-lock.json
 .claude/
+config.bat

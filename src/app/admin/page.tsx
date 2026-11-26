@@ -7,7 +7,7 @@ import { useAdminAuth } from "@/context/AuthContext";
 import { PortalShell, Panel, Field, Button, Note } from "@/components/portal/ui";
 import PasswordField from "@/components/portal/PasswordField";
 
-//commenting to deploy
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const { login } = useAdminAuth();
